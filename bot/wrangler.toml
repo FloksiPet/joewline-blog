@@ -16,6 +16,19 @@ GITHUB_BRANCH = "main"
 CONTENT_PATH = "site/src/content/cases"
 SITE_URL = "https://floksipet.github.io/joewline-blog/"
 
+# Chat ID групи/каналу, куди бот дублює анонс кожного збереженого запису.
+# Порожнє значення — анонс просто вимкнений, нічого не ламається.
+#
+# Як заповнити:
+#   1. Створи групу або канал у Telegram.
+#   2. Додай туди цього бота адміністратором (каналу — обов'язково адміном,
+#      групі досить бути учасником, але для каналу інакше він не зможе постити).
+#   3. Дізнайся chat_id: напиши будь-що в групі, тоді відкрий у браузері
+#      https://api.telegram.org/bot<TOKEN>/getUpdates і знайди "chat":{"id": ...}
+#      (для груп/каналів це від'ємне число, напр. -1001234567890).
+#   4. Впиши це число нижче в лапках і виконай `cd bot && npx wrangler deploy`.
+ANNOUNCE_CHAT_ID = ""
+
 [[kv_namespaces]]
 binding = "joewline_bot_drafts"
 id = "0c3acf3fc82e4fef80c56064a2301e60"

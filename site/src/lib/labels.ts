@@ -1,8 +1,21 @@
 import type { CollectionEntry } from 'astro:content';
 
+// Дата зберігається в UTC (ISO), але сайт збирається на CI-сервері з
+// довільним часовим поясом (зазвичай UTC) — без явного timeZone дата на
+// сторінці "поїде" відносно реального київського часу. Тому час завжди
+// виводимо саме в Europe/Kyiv, незалежно від того, де відбувається білд.
 export function formatDate(date: Date): string {
-  const datePart = date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' });
-  const timePart = date.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
+  const datePart = date.toLocaleDateString('uk-UA', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Europe/Kyiv',
+  });
+  const timePart = date.toLocaleTimeString('uk-UA', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Kyiv',
+  });
   return `${datePart}, ${timePart}`;
 }
 

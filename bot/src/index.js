@@ -17,7 +17,9 @@
  *                                Read and write лише для цього репозиторію
  *
  * Змінні (у wrangler.toml, не секрет):
- *   GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, CONTENT_PATH, SITE_URL
+ *   GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, CONTENT_PATH, SITE_URL,
+ *   ANNOUNCE_CHAT_ID — опційно: chat_id групи/каналу, куди дублюється
+ *     анонс кожного збереженого запису (порожньо — анонс вимкнений).
  *
  * ВАЖЛИВО: зміни в цьому файлі не діють на живого бота, доки не виконаєш
  *   cd bot && npx wrangler deploy
@@ -25,19 +27,25 @@
  * поки немає.
  */
 
-const HELP_TEXT = [
-  'Як це працює:',
-  '',
-  '• «Створити думку» — вільна нотатка-роздум. На сайті це «роздуми».',
-  '• «Створити кейс» — проблема → хід розбору → рішення. Поки не завершив — на сайті це «нотатка».',
-  '• «Зберегти» — зберігає написане як чернетку/нотатку.',
-  '• «Опублікувати як статтю» — позначає кейс завершеним. На сайті це «стаття», і вона переїжджає в окремий блок збоку.',
-  '',
-  'Теги: просто пиши #тег будь-де в тексті (наприклад #проєкт-x або #мікроконтролери) — на сайті він стане клікабельним кольоровим тегом. Можна декілька.',
-  '',
-  'Команди: /start — меню, /help — ця підказка, /done — зберегти чернетку, /publish — опублікувати як статтю.',
-  'Повідомлення, що починається з #case, теж перемикає в режим кейсу.',
-].join('\n');
+function helpText(env) {
+  const siteUrl = env.SITE_URL || 'https://floksipet.github.io/joewline-blog/';
+  return [
+    'Як це працює:',
+    '',
+    '• «Створити думку» — вільна нотатка-роздум. На сайті це «роздуми».',
+    '• «Створити кейс» — проблема → хід розбору → рішення. Поки не завершив — на сайті це «нотатка».',
+    '• «Зберегти» — зберігає написане як чернетку/нотатку.',
+    '• «Опублікувати як статтю» — позначає кейс завершеним. На сайті це «стаття», і вона переїжджає в окремий блок збоку.',
+    '',
+    'Теги: просто пиши #тег будь-де в тексті (наприклад #проєкт-x або #мікроконтролери) — на сайті він стане клікабельним кольоровим тегом. Можна декілька.',
+    '',
+    'Команди: /start — меню, /help — ця підказка, /done — зберегти чернетку, /publish — опублікувати як статтю.',
+    'Повідомлення, що починається з #case, теж перемикає в режим кейсу.',
+    '',
+    `Сайт (звичайне посилання, відкриється в браузері): ${siteUrl}`,
+    'Кнопка «🌐 Сайт» нижче відкриває той самий сайт прямо в Telegram.',
+  ].join('\n');
+}
 
 const START_TEXT = 'Привіт! Я перетворюю твої повідомлення на записи в блозі. Обери режим кнопкою нижче або напиши /help, щоб побачити, як усе працює (роздуми/нотатка/стаття, теги).';
 
@@ -99,7 +107,7 @@ export default {
     }
 
     if (text === 'Допомога') {
-      await sendMenu(env, chatId, HELP_TEXT);
+      await sendMenu(env, chatId, helpText(env));
       return new Response('ok');
     }
 
@@ -120,11 +128,11 @@ export default {
       }
 
       if (text === '/help') {
-        await sendTelegram(env, chatId, HELP_TEXT, getMainKeyboard(env));
+        await sendTelegram(env, chatId, helpText(env), getMainKeyboard(env));
         return new Response('ok');
       }
 
-      await sendTelegram(env, chatId, HELP_TEXT, getMainKeyboard(env));
+      await sendTelegram(env, chatId, helpText(env), getMainKeyboard(env));
       return new Response('ok');
     }
 
@@ -207,13 +215,36 @@ async function finishDraft(env, chatId, options = {}) {
   const normalized = draftText.replace(/^(#case|case:)\s*/i, '').trim();
   const tags = extractTags(normalized);
   const withoutTags = stripTags(normalized);
-  const { path, title } = await createCaseFile(withoutTags, env, { kind: mode, status, tags });
+  const { path, title, slug } = await createCaseFile(withoutTags, env, { kind: mode, status, tags });
   await env.joewline_bot_drafts.delete(key);
   await env.joewline_bot_drafts.delete(`mode:${chatId}`);
 
   const tagsNote = tags.length > 0 ? `\nТеги: ${tags.map((t) => `#${t}`).join(' ')}` : '';
   const statusNote = status === 'done' ? ' (стаття)' : '';
   await sendTelegram(env, chatId, `Збережено${statusNote}: "${title}"\n${path}${tagsNote}`, getMainKeyboard(env));
+  await announceNewPost(env, { title, slug, tags, status });
+}
+
+// Дублює анонс кожного збереженого запису в групу/канал, якщо той
+// налаштований (ANNOUNCE_CHAT_ID у wrangler.toml). Якщо ні — просто нічого
+// не робить, збереження в репозиторій це не зупиняє.
+async function announceNewPost(env, { title, slug, tags, status }) {
+  if (!env.ANNOUNCE_CHAT_ID) return;
+
+  const siteUrl = env.SITE_URL || 'https://floksipet.github.io/joewline-blog/';
+  const postUrl = `${siteUrl}${slug}/`;
+  const emoji = status === 'done' ? '📄' : '📝';
+  const tagsLine = tags.length > 0 ? `\n${tags.map((t) => `#${t}`).join(' ')}` : '';
+
+  try {
+    await telegramApi(env, 'sendMessage', {
+      chat_id: env.ANNOUNCE_CHAT_ID,
+      text: `${emoji} ${title}\n${postUrl}${tagsLine}`,
+    });
+  } catch (err) {
+    // Анонс — це бонус, а не критична частина потоку: якщо бот ще не
+    // адмін групи чи ID неправильний, головне збереження вже відбулось.
+  }
 }
 
 async function getDraft(env, key) {
@@ -292,7 +323,7 @@ async function createCaseFile(rawText, env, options = {}) {
     branch: env.GITHUB_BRANCH,
   });
 
-  return { path, title };
+  return { path, title, slug };
 }
 
 function buildBody(rawText, imageDataUrl) {
@@ -416,7 +447,7 @@ async function handleCallback(env, chatId, data) {
   } else if (data === 'save_draft') {
     await finishDraft(env, chatId);
   } else if (data === 'help') {
-    await sendTelegram(env, chatId, HELP_TEXT, getMainKeyboard(env));
+    await sendTelegram(env, chatId, helpText(env), getMainKeyboard(env));
   }
 }
 
