@@ -19,7 +19,7 @@ const feed = await Promise.all(
   feedEntries.map(async (entry) => ({ entry, Content: (await entry.render()).Content }))
 );
 ---
-<Base title="стрічка">
+<Base title="стрічка" description="Стрічка нотаток і роздумів JoeWline: мікроконтролери, іграшки на залізі, автоматизація через ШІ — з окремим блоком завершених статей.">
   <div class="layout">
     <section class="feed" aria-label="стрічка нотаток">
       <div class="feed-controls">

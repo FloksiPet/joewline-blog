@@ -4,7 +4,7 @@
  * Що робить:
  *  1. Приймає webhook від Telegram (голосове або текстове повідомлення).
  *  2. Якщо голос — розшифровує через Workers AI (Whisper), без зовнішніх ключів.
- *  3. Формує markdown-файл кейсу з правильним frontmatter (status: draft).
+ *  3. Формує markdown-файл кейсу з правильним frontmatter (status: draft/done).
  *  4. Створює цей файл коммітом напряму в GitHub-репозиторії через Contents API
  *     (git на сервері не потрібен — усе через звичайний fetch).
  *  5. Відповідає в Telegram посиланням на новий файл.
@@ -17,8 +17,35 @@
  *                                Read and write лише для цього репозиторію
  *
  * Змінні (у wrangler.toml, не секрет):
- *   GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, CONTENT_PATH
+ *   GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH, CONTENT_PATH, SITE_URL
+ *
+ * ВАЖЛИВО: зміни в цьому файлі не діють на живого бота, доки не виконаєш
+ *   cd bot && npx wrangler deploy
+ * Пуш у GitHub перезбирає лише сайт (site/), не бота — для бота автодеплою
+ * поки немає.
  */
+
+const HELP_TEXT = [
+  'Як це працює:',
+  '',
+  '• «Створити думку» — вільна нотатка-роздум. На сайті це «роздуми».',
+  '• «Створити кейс» — проблема → хід розбору → рішення. Поки не завершив — на сайті це «нотатка».',
+  '• «Зберегти» — зберігає написане як чернетку/нотатку.',
+  '• «Опублікувати як статтю» — позначає кейс завершеним. На сайті це «стаття», і вона переїжджає в окремий блок збоку.',
+  '',
+  'Теги: просто пиши #тег будь-де в тексті (наприклад #проєкт-x або #мікроконтролери) — на сайті він стане клікабельним кольоровим тегом. Можна декілька.',
+  '',
+  'Команди: /start — меню, /help — ця підказка, /done — зберегти чернетку, /publish — опублікувати як статтю.',
+  'Повідомлення, що починається з #case, теж перемикає в режим кейсу.',
+].join('\n');
+
+const START_TEXT = 'Привіт! Я перетворюю твої повідомлення на записи в блозі. Обери режим кнопкою нижче або напиши /help, щоб побачити, як усе працює (роздуми/нотатка/стаття, теги).';
+
+function modeText(mode) {
+  return mode === 'case'
+    ? 'Режим: кейс. Пиши проблему, хід розбору й рішення. Теги — просто #тег у тексті. Коли закінчиш: «Зберегти» (чернетка) або «Опублікувати як статтю» (готово).'
+    : 'Режим: думка. Пиши текст і/або фото. Теги — просто #тег у тексті. Коли закінчиш — «Зберегти» або /done.';
+}
 
 export default {
   async fetch(request, env) {
@@ -51,13 +78,13 @@ export default {
 
     if (text === 'Створити думку') {
       await setDraftMode(env, chatId, 'thought');
-      await sendMenu(env, chatId, 'Режим: думка. Пиши текст або фото. Коли закінчиш — натисни кнопку «Зберегти» або надішли /done.');
+      await sendMenu(env, chatId, modeText('thought'));
       return new Response('ok');
     }
 
     if (text === 'Створити кейс') {
       await setDraftMode(env, chatId, 'case');
-      await sendMenu(env, chatId, 'Режим: кейс. Пиши проблему, хід розбору й рішення. Коли закінчиш — натисни кнопку «Зберегти» або надішли /done.');
+      await sendMenu(env, chatId, modeText('case'));
       return new Response('ok');
     }
 
@@ -66,19 +93,19 @@ export default {
       return new Response('ok');
     }
 
-    if (text === 'Допомога') {
-      await sendMenu(env, chatId, 'Команди:\n/help — підказка\n/done — зберегти чернетку\n#case — створити кейс\nПросто пиши текст, додавай фото і продовжуй.');
+    if (text === 'Опублікувати як статтю') {
+      await finishDraft(env, chatId, { status: 'done' });
       return new Response('ok');
     }
 
-    if (text === '🌐 Сайт') {
-      await sendSiteLink(env, chatId);
+    if (text === 'Допомога') {
+      await sendMenu(env, chatId, HELP_TEXT);
       return new Response('ok');
     }
 
     if (text.startsWith('/')) {
       if (text === '/start') {
-        await sendMenu(env, chatId, 'Оберіть режим для нової записи.');
+        await sendMenu(env, chatId, START_TEXT);
         return new Response('ok');
       }
 
@@ -87,22 +114,17 @@ export default {
         return new Response('ok');
       }
 
-      if (text === '/help') {
-        await sendTelegram(
-          env,
-          chatId,
-          'Команди:\n/help — підказка\n/done — зберегти чернетку\n#case — створити кейс\nПросто пиши текст, додавай фото і продовжуй.',
-          getMainKeyboard()
-        );
+      if (text === '/publish') {
+        await finishDraft(env, chatId, { status: 'done' });
         return new Response('ok');
       }
 
-      await sendTelegram(
-        env,
-        chatId,
-        'Пиши думку послідовно: текст, фото, текст, фото. Коли закінчиш — надішли /done або натисни кнопку зберегти. Якщо хочеш створити готовий кейс, почни повідомлення з #case.',
-        getMainKeyboard()
-      );
+      if (text === '/help') {
+        await sendTelegram(env, chatId, HELP_TEXT, getMainKeyboard(env));
+        return new Response('ok');
+      }
+
+      await sendTelegram(env, chatId, HELP_TEXT, getMainKeyboard(env));
       return new Response('ok');
     }
 
@@ -127,7 +149,7 @@ export default {
 
       const hasContent = Boolean(rawText?.trim() || imageDataUrl);
       if (!hasContent) {
-        await sendTelegram(env, chatId, 'Не побачив ні тексту, ні голосу, ні фото з підписом — спробуй ще раз.', getMainKeyboard());
+        await sendTelegram(env, chatId, 'Не побачив ні тексту, ні голосу, ні фото з підписом — спробуй ще раз.', getMainKeyboard(env));
         return new Response('ok');
       }
 
@@ -137,10 +159,10 @@ export default {
         env,
         chatId,
         `Додано до чернетки. Пиши далі або натисни кнопку «Зберегти».`,
-        getMainKeyboard()
+        getMainKeyboard(env)
       );
     } catch (err) {
-      await sendTelegram(env, chatId, `Щось пішло не так: ${err.message}`, getMainKeyboard());
+      await sendTelegram(env, chatId, `Щось пішло не так: ${err.message}`, getMainKeyboard(env));
     }
 
     return new Response('ok');
@@ -172,20 +194,26 @@ async function appendToDraft(env, chatId, rawText, imageDataUrl, kind) {
   return { next };
 }
 
-async function finishDraft(env, chatId) {
+async function finishDraft(env, chatId, options = {}) {
+  const { status = 'draft' } = options;
   const key = `draft:${chatId}`;
   const draftText = await getDraft(env, key);
   if (!draftText || !draftText.trim()) {
-    await sendTelegram(env, chatId, 'Чернетка пуста — нічого не зберігав.');
+    await sendTelegram(env, chatId, 'Чернетка пуста — нічого не зберігав.', getMainKeyboard(env));
     return;
   }
 
   const mode = (await getDraftMode(env, chatId)) || 'thought';
   const normalized = draftText.replace(/^(#case|case:)\s*/i, '').trim();
-  const { path, title } = await createCaseFile(normalized, env, { kind: mode });
+  const tags = extractTags(normalized);
+  const withoutTags = stripTags(normalized);
+  const { path, title } = await createCaseFile(withoutTags, env, { kind: mode, status, tags });
   await env.joewline_bot_drafts.delete(key);
   await env.joewline_bot_drafts.delete(`mode:${chatId}`);
-  await sendTelegram(env, chatId, `Збережено: "${title}"\n${path}`);
+
+  const tagsNote = tags.length > 0 ? `\nТеги: ${tags.map((t) => `#${t}`).join(' ')}` : '';
+  const statusNote = status === 'done' ? ' (стаття)' : '';
+  await sendTelegram(env, chatId, `Збережено${statusNote}: "${title}"\n${path}${tagsNote}`, getMainKeyboard(env));
 }
 
 async function getDraft(env, key) {
@@ -200,8 +228,24 @@ async function getDraftMode(env, chatId) {
   return env.joewline_bot_drafts.get(`mode:${chatId}`);
 }
 
+// Хештеги (#тег) будь-де в тексті стають тегами на сайті — не треба
+// окремої команди чи меню, досить писати їх природно по ходу тексту.
+function extractTags(text) {
+  const matches = text.match(/#([\p{L}\p{N}_-]+)/gu) || [];
+  const tags = matches.map((m) => m.slice(1).toLowerCase()).filter((tag) => tag !== 'case');
+  return [...new Set(tags)];
+}
+
+function stripTags(text) {
+  return text
+    .replace(/#([\p{L}\p{N}_-]+)/gu, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 async function createCaseFile(rawText, env, options = {}) {
-  const { kind = 'thought', imageDataUrl = null } = options;
+  const { kind = 'thought', imageDataUrl = null, status = 'draft', tags = [] } = options;
   const firstLine = rawText.split('\n')[0].slice(0, 70).trim();
   const title = firstLine || 'Нова нотатка';
   const now = new Date();
@@ -232,9 +276,9 @@ async function createCaseFile(rawText, env, options = {}) {
     '---',
     `title: "${title.replace(/"/g, "'")}"`,
     `date: ${isoDateTime}`,
-    'status: draft',
+    `status: ${status}`,
     `kind: ${kind}`,
-    'tags: []',
+    `tags: [${tags.join(', ')}]`,
     'targets: [site]',
     'canonical: true',
     '---',
@@ -337,6 +381,7 @@ async function sendMenu(env, chatId, text = 'Оберіть режим') {
       { command: 'start', description: 'Відкрити меню' },
       { command: 'help', description: 'Підказка' },
       { command: 'done', description: 'Зберегти чернетку' },
+      { command: 'publish', description: 'Опублікувати як статтю' },
     ],
   });
 
@@ -345,41 +390,33 @@ async function sendMenu(env, chatId, text = 'Оберіть режим') {
     menu_button: { type: 'commands' },
   });
 
-  return sendTelegram(env, chatId, text, getMainKeyboard());
+  return sendTelegram(env, chatId, text, getMainKeyboard(env));
 }
 
-function getMainKeyboard() {
+function getMainKeyboard(env) {
+  const siteUrl = env.SITE_URL || 'https://floksipet.github.io/joewline-blog/';
   return {
     keyboard: [
       [{ text: 'Створити думку' }, { text: 'Створити кейс' }],
-      [{ text: 'Зберегти' }, { text: 'Допомога' }],
-      [{ text: '🌐 Сайт' }],
+      [{ text: 'Зберегти' }, { text: 'Опублікувати як статтю' }],
+      [{ text: 'Допомога' }, { text: '🌐 Сайт', web_app: { url: siteUrl } }],
     ],
     resize_keyboard: true,
     one_time_keyboard: false,
   };
 }
 
-async function sendSiteLink(env, chatId) {
-  const url = env.SITE_URL || 'https://floksipet.github.io/joewline-blog/';
-  await telegramApi(env, 'sendMessage', {
-    chat_id: chatId,
-    text: 'Твій сайт:',
-    reply_markup: { inline_keyboard: [[{ text: '🌐 Відкрити сайт', url }]] },
-  });
-}
-
 async function handleCallback(env, chatId, data) {
   if (data === 'create_thought') {
     await setDraftMode(env, chatId, 'thought');
-    await sendTelegram(env, chatId, 'Режим: думка. Пиши текст або фото. Коли закінчиш — натисни «Зберегти» або надішли /done.', getMainKeyboard());
+    await sendTelegram(env, chatId, modeText('thought'), getMainKeyboard(env));
   } else if (data === 'create_case') {
     await setDraftMode(env, chatId, 'case');
-    await sendTelegram(env, chatId, 'Режим: кейс. Пиши проблему, хід розбору й рішення. Коли закінчиш — натисни «Зберегти» або надішли /done.', getMainKeyboard());
+    await sendTelegram(env, chatId, modeText('case'), getMainKeyboard(env));
   } else if (data === 'save_draft') {
     await finishDraft(env, chatId);
   } else if (data === 'help') {
-    await sendTelegram(env, chatId, 'Команди:\n/help — підказка\n/done — зберегти чернетку\n#case — створити кейс\nПросто пиши текст, додавай фото і продовжуй.', getMainKeyboard());
+    await sendTelegram(env, chatId, HELP_TEXT, getMainKeyboard(env));
   }
 }
 

@@ -99,7 +99,7 @@ a { color: var(--copper); }
   border: 1px solid var(--copper);
   color: var(--copper);
   border-radius: 999px;
-  padding: 1px 10px;
+  padding: 3px 10px;
   font-size: 0.75rem;
   margin-right: 8px;
 }
@@ -162,15 +162,19 @@ article img,
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background: rgba(28, 33, 38, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(28, 33, 38, 0.75);
   color: var(--paper);
   border: 1px solid #333c42;
   border-radius: 999px;
-  width: 32px;
-  height: 32px;
-  font-size: 1.1rem;
+  width: 40px;
+  height: 40px;
+  font-size: 1.2rem;
   line-height: 1;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .carousel-prev:hover,
 .carousel-next:hover { border-color: var(--copper); color: var(--copper); }
@@ -180,20 +184,31 @@ article img,
 .carousel-dots {
   display: flex;
   justify-content: center;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 2px;
+  margin-top: 4px;
 }
 
+/* сама кнопка — 32px для зручного тапу, видима крапка всередині менша */
 .carousel-dot {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.carousel-dot::after {
+  content: '';
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  border: none;
-  padding: 0;
   background: #333c42;
-  cursor: pointer;
 }
-.carousel-dot.is-active { background: var(--copper); }
+.carousel-dot.is-active::after { background: var(--copper); }
 
 /* lightbox — клік по фото відкриває збільшену версію */
 .lightbox {
@@ -221,14 +236,20 @@ article img,
 }
 .lightbox-close {
   position: absolute;
-  top: 20px;
-  right: 24px;
+  top: 12px;
+  right: 16px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--paper);
   font-size: 2rem;
   line-height: 1;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .lightbox-close:hover { color: var(--copper); }
 
@@ -342,7 +363,7 @@ article img,
   border: 1px solid var(--tag-color, var(--muted));
   color: var(--tag-color, var(--muted));
   border-radius: 999px;
-  padding: 1px 10px;
+  padding: 4px 12px;
   text-decoration: none;
   font-size: 0.8rem;
 }

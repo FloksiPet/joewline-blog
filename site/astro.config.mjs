@@ -1,4 +1,5 @@
 import { defineConfig } from 'astro/config';
+import sitemap from '@astrojs/sitemap';
 import { rehypeBaseUrl } from './src/lib/rehype-base-url.mjs';
 import { rehypeGallery } from './src/lib/rehype-gallery.mjs';
 
@@ -20,6 +21,7 @@ const base = '/joewline-blog/';
 export default defineConfig({
   site: 'https://floksipet.github.io',
   base,
+  integrations: [sitemap()],
   markdown: {
     // Фото з Telegram-бота вставляються як `/uploads/...` (корене-відносний
     // шлях). rehypeBaseUrl дописує `base`, інакше на GitHub Pages вони

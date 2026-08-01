@@ -3,6 +3,8 @@ import Base from '../layouts/Base.astro';
 import Tags from '../components/Tags.astro';
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { displayKind, formatDate } from '../lib/labels';
+import { excerpt } from '../lib/entries';
+import { firstImagePath } from '../lib/og';
 
 export async function getStaticPaths() {
   const entries = await getCollection('cases');
@@ -19,8 +21,18 @@ interface Props {
 const { entry } = Astro.props;
 const { Content } = await entry.render();
 const kind = displayKind(entry);
+
+const description = excerpt(entry.body);
+const imagePath = firstImagePath(entry.body);
+const ogImage = imagePath ? `${import.meta.env.BASE_URL}${imagePath.replace(/^\//, '')}` : undefined;
 ---
-<Base title={entry.data.title}>
+<Base
+  title={entry.data.title}
+  description={description}
+  image={ogImage}
+  type="article"
+  publishedTime={entry.data.date.toISOString()}
+>
   <article class="article-page">
     <p class="back-link"><a href={import.meta.env.BASE_URL}>&larr; уся стрічка</a></p>
     <h1>{entry.data.title}</h1>

@@ -10,7 +10,7 @@ entries.forEach((entry) => {
 
 const tags = Array.from(counts.entries()).sort((a, b) => a[0].localeCompare(b[0], 'uk'));
 ---
-<Base title="усі теги">
+<Base title="усі теги" description="Усі теги на сайті joewline — оберіть тег, щоб прочитати всі записи з ним.">
   <p class="back-link"><a href={import.meta.env.BASE_URL}>&larr; уся стрічка</a></p>
   <h1>Теги</h1>
   {tags.length === 0 ? (

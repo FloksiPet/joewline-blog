@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://floksipet.github.io/joewline-blog/sitemap-index.xml
