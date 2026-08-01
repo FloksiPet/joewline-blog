@@ -11,12 +11,14 @@ const { title } = Astro.props;
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}jwl-icon.svg`} />
     <title>{title} — joewline</title>
   </head>
   <body>
     <header class="site-header">
-      <a href={import.meta.env.BASE_URL} class="brand">joewline</a>
+      <a href={import.meta.env.BASE_URL} class="brand">
+        <img src={`${import.meta.env.BASE_URL}jwl-logo-horizontal.svg`} alt="joewline" height="40" />
+      </a>
       <nav class="site-nav">
         <a href={import.meta.env.BASE_URL}>стрічка</a>
         <a href={`${import.meta.env.BASE_URL}tags/`}>теги</a>
@@ -27,3 +29,64 @@ const { title } = Astro.props;
     </main>
   </body>
 </html>
+
+<script>
+  function setupCarousels() {
+    document.querySelectorAll<HTMLElement>('.carousel').forEach((carousel) => {
+      const track = carousel.querySelector<HTMLElement>('.carousel-track');
+      const slides = Array.from(carousel.querySelectorAll<HTMLElement>('.carousel-slide'));
+      const dots = Array.from(carousel.querySelectorAll<HTMLElement>('.carousel-dot'));
+      const prev = carousel.querySelector<HTMLButtonElement>('.carousel-prev');
+      const next = carousel.querySelector<HTMLButtonElement>('.carousel-next');
+      if (!track || slides.length === 0) return;
+
+      const currentIndex = () => Math.round(track.scrollLeft / track.clientWidth);
+
+      const scrollToIndex = (i: number) => {
+        const clamped = Math.max(0, Math.min(slides.length - 1, i));
+        track.scrollTo({ left: slides[clamped].offsetLeft, behavior: 'smooth' });
+      };
+
+      prev?.addEventListener('click', () => scrollToIndex(currentIndex() - 1));
+      next?.addEventListener('click', () => scrollToIndex(currentIndex() + 1));
+      dots.forEach((dot, i) => dot.addEventListener('click', () => scrollToIndex(i)));
+
+      const updateDots = () => {
+        const active = currentIndex();
+        dots.forEach((dot, i) => dot.classList.toggle('is-active', i === active));
+      };
+      track.addEventListener('scroll', () => window.requestAnimationFrame(updateDots));
+      updateDots();
+    });
+  }
+
+  function setupLightbox() {
+    const overlay = document.createElement('div');
+    overlay.className = 'lightbox';
+    const overlayImg = document.createElement('img');
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'lightbox-close';
+    closeBtn.setAttribute('aria-label', 'Закрити');
+    closeBtn.textContent = '×';
+    overlay.append(overlayImg, closeBtn);
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.classList.remove('is-open');
+    overlay.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+    });
+
+    document.querySelectorAll<HTMLImageElement>('.feed-item-body img, .article-page img').forEach((img) => {
+      img.addEventListener('click', () => {
+        overlayImg.src = img.src;
+        overlayImg.alt = img.alt;
+        overlay.classList.add('is-open');
+      });
+    });
+  }
+
+  setupCarousels();
+  setupLightbox();
+</script>

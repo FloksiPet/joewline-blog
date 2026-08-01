@@ -71,6 +71,11 @@ export default {
       return new Response('ok');
     }
 
+    if (text === '🌐 Сайт') {
+      await sendSiteLink(env, chatId);
+      return new Response('ok');
+    }
+
     if (text.startsWith('/')) {
       if (text === '/start') {
         await sendMenu(env, chatId, 'Оберіть режим для нової записи.');
@@ -348,10 +353,20 @@ function getMainKeyboard() {
     keyboard: [
       [{ text: 'Створити думку' }, { text: 'Створити кейс' }],
       [{ text: 'Зберегти' }, { text: 'Допомога' }],
+      [{ text: '🌐 Сайт' }],
     ],
     resize_keyboard: true,
     one_time_keyboard: false,
   };
+}
+
+async function sendSiteLink(env, chatId) {
+  const url = env.SITE_URL || 'https://floksipet.github.io/joewline-blog/';
+  await telegramApi(env, 'sendMessage', {
+    chat_id: chatId,
+    text: 'Твій сайт:',
+    reply_markup: { inline_keyboard: [[{ text: '🌐 Відкрити сайт', url }]] },
+  });
 }
 
 async function handleCallback(env, chatId, data) {

@@ -1,6 +1,6 @@
 ---
 import Tags from './Tags.astro';
-import { kindLabel, formatDate } from '../lib/labels';
+import { displayKind, formatDate } from '../lib/labels';
 import type { CollectionEntry } from 'astro:content';
 
 interface Props {
@@ -9,10 +9,11 @@ interface Props {
 }
 
 const { entry, Content } = Astro.props;
+const kind = displayKind(entry);
 ---
 <article class="feed-item" id={entry.slug}>
   <div class="feed-item-meta">
-    <span class="pill">{kindLabel[entry.data.kind]}</span>
+    <span class={`pill ${kind.className}`}>{kind.label}</span>
     <a class="permalink" href={`${import.meta.env.BASE_URL}${entry.slug}`}>
       <time datetime={entry.data.date.toISOString()}>{formatDate(entry.data.date)}</time>
     </a>

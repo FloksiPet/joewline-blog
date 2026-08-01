@@ -1,0 +1,29 @@
+<svg viewBox="0 0 640 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="pulseGlow2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#C87F4A" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#C87F4A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- icon, scaled + translated copy of jwl-icon -->
+  <g transform="translate(10,10) scale(0.75)">
+    <rect x="0" y="0" width="240" height="240" rx="44" fill="#1C2126"/>
+    <rect x="48" y="98" width="18" height="10" rx="2" fill="#C87F4A"/>
+    <rect x="48" y="122" width="18" height="10" rx="2" fill="#C87F4A"/>
+    <rect x="48" y="146" width="18" height="10" rx="2" fill="#C87F4A"/>
+    <rect x="174" y="98" width="18" height="10" rx="2" fill="#C87F4A"/>
+    <rect x="174" y="146" width="18" height="10" rx="2" fill="#C87F4A"/>
+    <rect x="64" y="78" width="112" height="88" rx="10" fill="#242C32" stroke="#EDE6DA" stroke-width="3.5"/>
+    <circle cx="79" cy="93" r="4.5" fill="#C87F4A"/>
+    <text x="120" y="132" text-anchor="middle" font-family="'JetBrains Mono','Courier New',ui-monospace,monospace" font-weight="700" font-size="42" letter-spacing="1" fill="#EDE6DA">JWL</text>
+    <path d="M192 103 L206 103 L206 84" fill="none" stroke="#C87F4A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="206" cy="80" r="16" fill="url(#pulseGlow2)"/>
+    <circle cx="206" cy="80" r="9" fill="none" stroke="#C87F4A" stroke-width="2" opacity="0.55"/>
+    <circle cx="206" cy="80" r="4" fill="#C87F4A"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="205" y="112" font-family="'JetBrains Mono','Courier New',ui-monospace,monospace" font-weight="700" font-size="56" letter-spacing="-1" fill="#EDE6DA">joewline</text>
+  <text x="207" y="142" font-family="'JetBrains Mono','Courier New',ui-monospace,monospace" font-weight="600" font-size="15" letter-spacing="3.5" fill="#C87F4A">СХЕМИ, КОД І КЕЙСИ</text>
+</svg>

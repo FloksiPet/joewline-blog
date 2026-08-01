@@ -14,6 +14,7 @@ GITHUB_OWNER = "floksipet"
 GITHUB_REPO = "joewline-blog"
 GITHUB_BRANCH = "main"
 CONTENT_PATH = "site/src/content/cases"
+SITE_URL = "https://floksipet.github.io/joewline-blog/"
 
 [[kv_namespaces]]
 binding = "joewline_bot_drafts"

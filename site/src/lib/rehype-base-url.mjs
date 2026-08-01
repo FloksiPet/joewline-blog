@@ -17,6 +17,10 @@ export function rehypeBaseUrl(base) {
       if (typeof src === 'string' && isRootRelative(src) && !alreadyPrefixed(src)) {
         node.properties.src = `${prefix}${src}`;
       }
+      // Фото вантажаться лише коли доскролив до них — картинок у стрічці
+      // може бути багато, і без цього браузер тягнув би все одразу.
+      node.properties.loading = 'lazy';
+      node.properties.decoding = 'async';
     }
     if (node.children) {
       node.children.forEach(walk);
