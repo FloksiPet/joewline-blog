@@ -9,6 +9,7 @@ const cases = defineCollection({
     title: z.string(),
     date: z.coerce.date(),
     status: z.enum(['draft', 'in-progress', 'done']).default('draft'),
+    kind: z.enum(['thought', 'case']).default('thought'),
     tags: z.array(z.string()).default([]),
     // куди цей файл потенційно годиться для крос-посту (сайт — завжди)
     targets: z.array(z.enum(['site', 'dou', 'drukarnia'])).default(['site']),

@@ -34,33 +34,85 @@ export default {
     }
 
     const update = await request.json();
+    const callbackQuery = update.callback_query;
+    if (callbackQuery) {
+      const chatId = callbackQuery.message.chat.id;
+      const data = callbackQuery.data || '';
+      await handleCallback(env, chatId, data);
+      await telegramApi(env, 'answerCallbackQuery', { callback_query_id: callbackQuery.id, text: 'Ок' });
+      return new Response('ok');
+    }
+
     const message = update.message;
     if (!message) return new Response('ok');
 
     const chatId = message.chat.id;
+    const text = message.text?.trim() || '';
 
-    try {
-      let rawText = null;
-
-      if (message.voice) {
-        rawText = await transcribeVoice(message.voice.file_id, env);
-      } else if (message.text) {
-        rawText = message.text;
-      }
-
-      if (!rawText || !rawText.trim()) {
-        await sendTelegram(env, chatId, 'Не побачив ні тексту, ні голосу — спробуй ще раз.');
+    if (text.startsWith('/')) {
+      if (text === '/start') {
+        await sendMenu(env, chatId, 'Оберіть режим для нової записи.');
         return new Response('ok');
       }
 
-      const { path, title } = await createCaseFile(rawText, env);
+      if (text === '/done') {
+        await finishDraft(env, chatId);
+        return new Response('ok');
+      }
+
+      if (text === '/help') {
+        await sendTelegram(
+          env,
+          chatId,
+          'Команди:\n/help — підказка\n/done — зберегти чернетку\n#case — створити кейс\nПросто пиши текст, додавай фото і продовжуй.',
+          getMainKeyboard()
+        );
+        return new Response('ok');
+      }
+
       await sendTelegram(
         env,
         chatId,
-        `Записав: "${title}"\n${path}\n\nЦе чернетка (status: draft) — допиши деталі й onови статус у файлі, коли буде готово.`
+        'Пиши думку послідовно: текст, фото, текст, фото. Коли закінчиш — надішли /done або натисни кнопку зберегти. Якщо хочеш створити готовий кейс, почни повідомлення з #case.',
+        getMainKeyboard()
+      );
+      return new Response('ok');
+    }
+
+    try {
+      let rawText = null;
+      let imageDataUrl = null;
+      let kind = (await getDraftMode(env, chatId)) || 'thought';
+
+      if (message.voice) {
+        rawText = await transcribeVoice(message.voice.file_id, env);
+      } else if (message.photo) {
+        imageDataUrl = await downloadPhotoAsDataUrl(message.photo, env);
+        rawText = message.caption || message.text || '';
+      } else if (text) {
+        rawText = text;
+      }
+
+      if (rawText && rawText.trim().match(/^(#case|case:)/i)) {
+        kind = 'case';
+        rawText = rawText.replace(/^(#case|case:)\s*/i, '').trim();
+      }
+
+      if (!rawText || !rawText.trim()) {
+        await sendTelegram(env, chatId, 'Не побачив ні тексту, ні голосу, ні фото з підписом — спробуй ще раз.', getMainKeyboard());
+        return new Response('ok');
+      }
+
+      await setDraftMode(env, chatId, kind);
+      await appendToDraft(env, chatId, rawText, imageDataUrl, kind);
+      await sendTelegram(
+        env,
+        chatId,
+        `Додано до чернетки. Пиши далі або натисни кнопку «Зберегти».`,
+        getMainKeyboard()
       );
     } catch (err) {
-      await sendTelegram(env, chatId, `Щось пішло не так: ${err.message}`);
+      await sendTelegram(env, chatId, `Щось пішло не так: ${err.message}`, getMainKeyboard());
     }
 
     return new Response('ok');
@@ -83,7 +135,45 @@ async function transcribeVoice(fileId, env) {
   return result.text;
 }
 
-async function createCaseFile(rawText, env) {
+async function appendToDraft(env, chatId, rawText, imageDataUrl, kind) {
+  const key = `draft:${chatId}`;
+  const existing = await getDraft(env, key);
+  const block = imageDataUrl ? `\n\n![Вкладення](${imageDataUrl})\n\n${rawText.trim()}` : rawText.trim();
+  const next = existing ? `${existing}\n\n${block}` : block;
+  await env.KV.put(key, next, { expirationTtl: 60 * 60 * 24 * 7 });
+  return { next };
+}
+
+async function finishDraft(env, chatId) {
+  const key = `draft:${chatId}`;
+  const draftText = await getDraft(env, key);
+  if (!draftText || !draftText.trim()) {
+    await sendTelegram(env, chatId, 'Чернетка пуста — нічого не зберігав.');
+    return;
+  }
+
+  const mode = (await getDraftMode(env, chatId)) || 'thought';
+  const normalized = draftText.replace(/^(#case|case:)\s*/i, '').trim();
+  const { path, title } = await createCaseFile(normalized, env, { kind: mode });
+  await env.KV.delete(key);
+  await env.KV.delete(`mode:${chatId}`);
+  await sendTelegram(env, chatId, `Збережено: "${title}"\n${path}`);
+}
+
+async function getDraft(env, key) {
+  return env.KV.get(key);
+}
+
+async function setDraftMode(env, chatId, mode) {
+  await env.KV.put(`mode:${chatId}`, mode, { expirationTtl: 60 * 60 * 24 * 7 });
+}
+
+async function getDraftMode(env, chatId) {
+  return env.KV.get(`mode:${chatId}`);
+}
+
+async function createCaseFile(rawText, env, options = {}) {
+  const { kind = 'thought', imageDataUrl = null } = options;
   const firstLine = rawText.split('\n')[0].slice(0, 70).trim();
   const title = firstLine || 'Нова нотатка';
   const now = new Date();
@@ -91,26 +181,34 @@ async function createCaseFile(rawText, env) {
   const slug = slugify(`${isoDate}-${title}`);
   const path = `${env.CONTENT_PATH}/${slug}.md`;
 
+  const body = buildBody(rawText, imageDataUrl);
+  const block = kind === 'case'
+    ? [
+        '## Проблема',
+        '',
+        body.trim(),
+        '',
+        '## Хід розбору',
+        '',
+        '',
+        '## Рішення',
+        '',
+        '',
+      ].join('\n')
+    : body.trim();
+
   const frontmatter = [
     '---',
     `title: "${title.replace(/"/g, "'")}"`,
     `date: ${isoDate}`,
     'status: draft',
+    `kind: ${kind}`,
     'tags: []',
     'targets: [site]',
     'canonical: true',
     '---',
     '',
-    '## Проблема',
-    '',
-    rawText.trim(),
-    '',
-    '## Хід розбору',
-    '',
-    '',
-    '## Рішення',
-    '',
-    '',
+    block,
   ].join('\n');
 
   await githubApi(env, 'PUT', `/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${path}`, {
@@ -120,6 +218,20 @@ async function createCaseFile(rawText, env) {
   });
 
   return { path, title };
+}
+
+function buildBody(rawText, imageDataUrl) {
+  let body = rawText.trim();
+
+  if (imageDataUrl) {
+    const imageMarkdown = `![Вкладення](${imageDataUrl})`;
+    body = body.replace(/\[\[image\]\]/g, imageMarkdown);
+    if (!body.includes('![Вкладення](')) {
+      body = `${body}\n\n${imageMarkdown}`;
+    }
+  }
+
+  return body;
 }
 
 function slugify(input) {
@@ -147,8 +259,55 @@ async function telegramApi(env, method, params) {
   return resp.json();
 }
 
-async function sendTelegram(env, chatId, text) {
-  return telegramApi(env, 'sendMessage', { chat_id: chatId, text });
+async function downloadPhotoAsDataUrl(photo, env) {
+  const bestPhoto = photo[photo.length - 1];
+  const fileInfo = await telegramApi(env, 'getFile', { file_id: bestPhoto.file_id });
+  const filePath = fileInfo.result.file_path;
+  const fileUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`;
+  const resp = await fetch(fileUrl);
+  const buffer = await resp.arrayBuffer();
+  const mimeType = resp.headers.get('content-type') || 'image/jpeg';
+  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  return `data:${mimeType};base64,${base64}`;
+}
+
+async function sendTelegram(env, chatId, text, replyMarkup = null) {
+  const payload = { chat_id: chatId, text };
+  if (replyMarkup) payload.reply_markup = replyMarkup;
+  return telegramApi(env, 'sendMessage', payload);
+}
+
+async function sendMenu(env, chatId, text = 'Оберіть режим') {
+  return sendTelegram(env, chatId, text, getMainKeyboard());
+}
+
+function getMainKeyboard() {
+  return {
+    inline_keyboard: [
+      [
+        { text: 'Створити думку', callback_data: 'create_thought' },
+        { text: 'Створити кейс', callback_data: 'create_case' },
+      ],
+      [
+        { text: 'Зберегти', callback_data: 'save_draft' },
+        { text: 'Допомога', callback_data: 'help' },
+      ],
+    ],
+  };
+}
+
+async function handleCallback(env, chatId, data) {
+  if (data === 'create_thought') {
+    await setDraftMode(env, chatId, 'thought');
+    await sendTelegram(env, chatId, 'Режим: думка. Пиши текст або фото. Коли закінчиш — натисни «Зберегти» або надішли /done.', getMainKeyboard());
+  } else if (data === 'create_case') {
+    await setDraftMode(env, chatId, 'case');
+    await sendTelegram(env, chatId, 'Режим: кейс. Пиши проблему, хід розбору й рішення. Коли закінчиш — натисни «Зберегти» або надішли /done.', getMainKeyboard());
+  } else if (data === 'save_draft') {
+    await finishDraft(env, chatId);
+  } else if (data === 'help') {
+    await sendTelegram(env, chatId, 'Команди:\n/help — підказка\n/done — зберегти чернетку\n#case — створити кейс\nПросто пиши текст, додавай фото і продовжуй.', getMainKeyboard());
+  }
 }
 
 async function githubApi(env, method, path, body) {

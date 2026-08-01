@@ -22,12 +22,14 @@ interface Props {
 
 const { entry } = Astro.props;
 const { Content } = await entry.render();
+const kindLabel = entry.data.kind === 'case' ? 'кейс' : 'роздуми';
 ---
 <Base title={entry.data.title}>
   <article>
     <h1>{entry.data.title}</h1>
     <div class="meta">
       <span class="pill">{statusLabel[entry.data.status]}</span>
+      <span class="pill">{kindLabel}</span>
       {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
       {entry.data.tags.length > 0 && ' · ' + entry.data.tags.join(', ')}
     </div>

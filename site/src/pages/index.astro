@@ -11,17 +11,39 @@ const statusLabel: Record<string, string> = {
 const entries = (await getCollection('cases')).sort(
   (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
 );
+const thoughts = entries.filter((entry) => entry.data.kind === 'thought');
+const cases = entries.filter((entry) => entry.data.kind === 'case' || entry.data.status === 'done');
 ---
 <Base title="усі записи">
-  <ul class="case-list">
-    {entries.map((entry) => (
-      <li>
-        <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
-        <div class="meta">
-          <span class="pill">{statusLabel[entry.data.status]}</span>
-          {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
-        </div>
-      </li>
-    ))}
-  </ul>
+  <p>Тут є дві частини: стрічка думок і окремі готові кейси.</p>
+
+  <section>
+    <h2>Стрічка думок</h2>
+    <ul class="case-list">
+      {thoughts.map((entry) => (
+        <li>
+          <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
+          <div class="meta">
+            <span class="pill">{statusLabel[entry.data.status]}</span>
+            {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
+          </div>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <section>
+    <h2>Готові кейси</h2>
+    <ul class="case-list">
+      {cases.map((entry) => (
+        <li>
+          <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
+          <div class="meta">
+            <span class="pill">{statusLabel[entry.data.status]}</span>
+            {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
+          </div>
+        </li>
+      ))}
+    </ul>
+  </section>
 </Base>
