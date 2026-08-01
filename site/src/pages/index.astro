@@ -1,0 +1,27 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+
+const statusLabel: Record<string, string> = {
+  draft: 'чернетка',
+  'in-progress': 'у процесі',
+  done: 'завершено',
+};
+
+const entries = (await getCollection('cases')).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
+);
+---
+<Base title="усі записи">
+  <ul class="case-list">
+    {entries.map((entry) => (
+      <li>
+        <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
+        <div class="meta">
+          <span class="pill">{statusLabel[entry.data.status]}</span>
+          {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </div>
+      </li>
+    ))}
+  </ul>
+</Base>

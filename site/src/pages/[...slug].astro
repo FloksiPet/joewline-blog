@@ -1,0 +1,36 @@
+---
+import Base from '../layouts/Base.astro';
+import { getCollection, type CollectionEntry } from 'astro:content';
+
+const statusLabel: Record<string, string> = {
+  draft: 'чернетка',
+  'in-progress': 'у процесі',
+  done: 'завершено',
+};
+
+export async function getStaticPaths() {
+  const entries = await getCollection('cases');
+  return entries.map((entry) => ({
+    params: { slug: entry.slug },
+    props: { entry },
+  }));
+}
+
+interface Props {
+  entry: CollectionEntry<'cases'>;
+}
+
+const { entry } = Astro.props;
+const { Content } = await entry.render();
+---
+<Base title={entry.data.title}>
+  <article>
+    <h1>{entry.data.title}</h1>
+    <div class="meta">
+      <span class="pill">{statusLabel[entry.data.status]}</span>
+      {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
+      {entry.data.tags.length > 0 && ' · ' + entry.data.tags.join(', ')}
+    </div>
+    <Content />
+  </article>
+</Base>

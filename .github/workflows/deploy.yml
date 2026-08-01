@@ -1,0 +1,73 @@
+name: Deploy site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: site
+        run: npm install
+
+      - name: Build
+        working-directory: site
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Опційно: анонс у Telegram-канал після успішного деплою.
+  # Заповни секрети TELEGRAM_CHANNEL_TOKEN і TELEGRAM_CHANNEL_ID
+  # в Settings → Secrets → Actions, якщо хочеш цей крок — інакше просто
+  # видали announce job.
+  announce:
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: false # постав true, коли будеш готовий/готова увімкнути анонси
+    steps:
+      - name: Notify Telegram channel
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_CHANNEL_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.TELEGRAM_CHANNEL_ID }}" \
+            -d text="Сайт оновлено: ${{ needs.deploy.outputs.page_url }}"

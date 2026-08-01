@@ -1,0 +1,16 @@
+name = "joewline-intake-bot"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+# Дає доступ до env.AI (Whisper для розшифровки голосу) безкоштовно
+# в межах ліміту Workers AI free tier.
+[ai]
+binding = "AI"
+
+# Не секретні налаштування. Секрети (токени) задаються окремо командою
+# `wrangler secret put <NAME>` — вони НЕ повинні лежати в цьому файлі.
+[vars]
+GITHUB_OWNER = "floksipet"
+GITHUB_REPO = "joewline-blog"
+GITHUB_BRANCH = "main"
+CONTENT_PATH = "site/src/content/cases"
