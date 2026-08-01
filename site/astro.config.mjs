@@ -1,4 +1,5 @@
 import { defineConfig } from 'astro/config';
+import { rehypeBaseUrl } from './src/lib/rehype-base-url.mjs';
 
 // ВАЖЛИВО: підлаштуй ці два поля під свій репозиторій, інакше посилання
 // на сайті та фіди будуть вести не туди.
@@ -13,7 +14,15 @@ import { defineConfig } from 'astro/config';
 //
 // В обох випадках base обов'язково закінчується "/" — інакше посилання
 // на сайті склеюються без роздільника.
+const base = '/joewline-blog/';
+
 export default defineConfig({
   site: 'https://floksipet.github.io',
-  base: '/joewline-blog/',
+  base,
+  markdown: {
+    // Фото з Telegram-бота вставляються як `/uploads/...` (корене-відносний
+    // шлях). rehypeBaseUrl дописує `base`, інакше на GitHub Pages вони
+    // ведуть повз підпапку сайту і просто не завантажуються.
+    rehypePlugins: [[rehypeBaseUrl, base]],
+  },
 });

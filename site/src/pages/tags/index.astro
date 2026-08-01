@@ -1,0 +1,28 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+
+const entries = await getCollection('cases');
+const counts = new Map<string, number>();
+entries.forEach((entry) => {
+  entry.data.tags.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1));
+});
+
+const tags = Array.from(counts.entries()).sort((a, b) => a[0].localeCompare(b[0], 'uk'));
+---
+<Base title="усі теги">
+  <p class="back-link"><a href={import.meta.env.BASE_URL}>&larr; уся стрічка</a></p>
+  <h1>Теги</h1>
+  {tags.length === 0 ? (
+    <p class="muted">Тегів поки що немає.</p>
+  ) : (
+    <ul class="tag-index">
+      {tags.map(([tag, count]) => (
+        <li>
+          <a class="tag" href={`${import.meta.env.BASE_URL}tags/${tag}/`}>#{tag}</a>
+          <span class="tag-count">{count}</span>
+        </li>
+      ))}
+    </ul>
+  )}
+</Base>

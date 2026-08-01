@@ -1,49 +1,75 @@
 ---
 import Base from '../layouts/Base.astro';
+import Tags from '../components/Tags.astro';
+import FeedItem from '../components/FeedItem.astro';
 import { getCollection } from 'astro:content';
+import { formatDate } from '../lib/labels';
+import { sortEntries, excerpt } from '../lib/entries';
 
-const statusLabel: Record<string, string> = {
-  draft: 'чернетка',
-  'in-progress': 'у процесі',
-  done: 'завершено',
-};
+// Стрічка — усе, що ще не "завершена стаття": чернетки, у процесі, думки,
+// кейси в роботі. Показуємо повний вміст (текст + фото) прямо тут, як
+// у каналі Telegram. Завершені статті (status: done) з цієї стрічки
+// прибираємо, щоб не дублювати — вони живуть окремим блоком праворуч.
+const allEntries = sortEntries(await getCollection('cases'));
 
-const entries = (await getCollection('cases')).sort(
-  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
+const articles = allEntries.filter((entry) => entry.data.status === 'done');
+const feedEntries = allEntries.filter((entry) => entry.data.status !== 'done');
+
+const feed = await Promise.all(
+  feedEntries.map(async (entry) => ({ entry, Content: (await entry.render()).Content }))
 );
-const thoughts = entries.filter((entry) => entry.data.kind === 'thought');
-const cases = entries.filter((entry) => entry.data.kind === 'case' || entry.data.status === 'done');
 ---
-<Base title="усі записи">
-  <p>Тут є дві частини: стрічка думок і окремі готові кейси.</p>
+<Base title="стрічка">
+  <div class="layout">
+    <section class="feed" aria-label="стрічка нотаток">
+      <div class="feed-controls">
+        <input type="search" id="search-input" placeholder="пошук по стрічці…" aria-label="пошук по стрічці" />
+      </div>
+      {feed.length === 0 && <p class="muted">Поки що порожньо.</p>}
+      <div id="feed-items">
+        {feed.map(({ entry, Content }) => (
+          <FeedItem entry={entry} Content={Content} />
+        ))}
+      </div>
+      <p id="no-results" class="muted" hidden>Нічого не знайдено.</p>
+    </section>
 
-  <section>
-    <h2>Стрічка думок</h2>
-    <ul class="case-list">
-      {thoughts.map((entry) => (
-        <li>
-          <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
-          <div class="meta">
-            <span class="pill">{statusLabel[entry.data.status]}</span>
-            {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
-          </div>
-        </li>
-      ))}
-    </ul>
-  </section>
-
-  <section>
-    <h2>Готові кейси</h2>
-    <ul class="case-list">
-      {cases.map((entry) => (
-        <li>
-          <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
-          <div class="meta">
-            <span class="pill">{statusLabel[entry.data.status]}</span>
-            {entry.data.date.toLocaleDateString('uk-UA', { year: 'numeric', month: 'long', day: 'numeric' })}
-          </div>
-        </li>
-      ))}
-    </ul>
-  </section>
+    <aside class="sidebar" aria-label="завершені статті">
+      <h2>Завершені статті</h2>
+      {articles.length === 0 ? (
+        <p class="muted">Поки що немає завершених статей.</p>
+      ) : (
+        <ul class="case-list">
+          {articles.map((entry) => (
+            <li>
+              <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
+              <div class="meta">{formatDate(entry.data.date)}</div>
+              <p class="excerpt">{excerpt(entry.body)}</p>
+              <Tags tags={entry.data.tags} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </aside>
+  </div>
 </Base>
+
+<script>
+  const input = document.getElementById('search-input') as HTMLInputElement | null;
+  const items = Array.from(document.querySelectorAll<HTMLElement>('.feed-item'));
+  const noResults = document.getElementById('no-results');
+
+  input?.addEventListener('input', () => {
+    const query = input.value.trim().toLowerCase();
+    let visibleCount = 0;
+
+    items.forEach((item) => {
+      const text = item.textContent?.toLowerCase() ?? '';
+      const matches = query.length === 0 || text.includes(query);
+      item.hidden = !matches;
+      if (matches) visibleCount += 1;
+    });
+
+    if (noResults) noResults.hidden = visibleCount > 0;
+  });
+</script>

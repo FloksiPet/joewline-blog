@@ -17,6 +17,10 @@ const { title } = Astro.props;
   <body>
     <header class="site-header">
       <a href={import.meta.env.BASE_URL} class="brand">joewline</a>
+      <nav class="site-nav">
+        <a href={import.meta.env.BASE_URL}>стрічка</a>
+        <a href={`${import.meta.env.BASE_URL}tags/`}>теги</a>
+      </nav>
     </header>
     <main>
       <slot />

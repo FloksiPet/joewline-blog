@@ -1,0 +1,37 @@
+---
+import Base from '../../layouts/Base.astro';
+import FeedItem from '../../components/FeedItem.astro';
+import { getCollection, type CollectionEntry } from 'astro:content';
+import { sortEntries } from '../../lib/entries';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('cases');
+  const tagSet = new Set<string>();
+  entries.forEach((entry) => entry.data.tags.forEach((tag) => tagSet.add(tag)));
+
+  return Array.from(tagSet).map((tag) => ({
+    params: { tag },
+    props: {
+      entries: sortEntries(entries.filter((entry) => entry.data.tags.includes(tag))),
+    },
+  }));
+}
+
+interface Props {
+  entries: CollectionEntry<'cases'>[];
+}
+
+const { tag } = Astro.params;
+const { entries } = Astro.props;
+
+const feed = await Promise.all(
+  entries.map(async (entry) => ({ entry, Content: (await entry.render()).Content }))
+);
+---
+<Base title={`тег: ${tag}`}>
+  <p class="back-link"><a href={import.meta.env.BASE_URL}>&larr; уся стрічка</a></p>
+  <h1>#{tag}</h1>
+  {feed.map(({ entry, Content }) => (
+    <FeedItem entry={entry} Content={Content} />
+  ))}
+</Base>

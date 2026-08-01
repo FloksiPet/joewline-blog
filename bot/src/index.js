@@ -201,6 +201,9 @@ async function createCaseFile(rawText, env, options = {}) {
   const title = firstLine || 'Нова нотатка';
   const now = new Date();
   const isoDate = now.toISOString().slice(0, 10);
+  // Повний час потрібен, щоб кілька нотаток за один день сортувались у
+  // стрічці хронологічно, а не лише за датою (без часу вони б "злипались").
+  const isoDateTime = now.toISOString();
   const slug = slugify(`${isoDate}-${title}`);
   const path = `${env.CONTENT_PATH}/${slug}.md`;
 
@@ -223,7 +226,7 @@ async function createCaseFile(rawText, env, options = {}) {
   const frontmatter = [
     '---',
     `title: "${title.replace(/"/g, "'")}"`,
-    `date: ${isoDate}`,
+    `date: ${isoDateTime}`,
     'status: draft',
     `kind: ${kind}`,
     'tags: []',
