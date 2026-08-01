@@ -49,6 +49,28 @@ export default {
     const chatId = message.chat.id;
     const text = message.text?.trim() || '';
 
+    if (text === 'Створити думку') {
+      await setDraftMode(env, chatId, 'thought');
+      await sendMenu(env, chatId, 'Режим: думка. Пиши текст або фото. Коли закінчиш — натисни кнопку «Зберегти» або надішли /done.');
+      return new Response('ok');
+    }
+
+    if (text === 'Створити кейс') {
+      await setDraftMode(env, chatId, 'case');
+      await sendMenu(env, chatId, 'Режим: кейс. Пиши проблему, хід розбору й рішення. Коли закінчиш — натисни кнопку «Зберегти» або надішли /done.');
+      return new Response('ok');
+    }
+
+    if (text === 'Зберегти') {
+      await finishDraft(env, chatId);
+      return new Response('ok');
+    }
+
+    if (text === 'Допомога') {
+      await sendMenu(env, chatId, 'Команди:\n/help — підказка\n/done — зберегти чернетку\n#case — створити кейс\nПросто пиши текст, додавай фото і продовжуй.');
+      return new Response('ok');
+    }
+
     if (text.startsWith('/')) {
       if (text === '/start') {
         await sendMenu(env, chatId, 'Оберіть режим для нової записи.');
@@ -87,7 +109,7 @@ export default {
       if (message.voice) {
         rawText = await transcribeVoice(message.voice.file_id, env);
       } else if (message.photo) {
-        imageDataUrl = await downloadPhotoAsDataUrl(message.photo, env);
+        imageDataUrl = await uploadPhotoToGitHub(message.photo, env);
         rawText = message.caption || message.text || '';
       } else if (text) {
         rawText = text;
@@ -98,7 +120,8 @@ export default {
         rawText = rawText.replace(/^(#case|case:)\s*/i, '').trim();
       }
 
-      if (!rawText || !rawText.trim()) {
+      const hasContent = Boolean(rawText?.trim() || imageDataUrl);
+      if (!hasContent) {
         await sendTelegram(env, chatId, 'Не побачив ні тексту, ні голосу, ні фото з підписом — спробуй ще раз.', getMainKeyboard());
         return new Response('ok');
       }
@@ -140,7 +163,7 @@ async function appendToDraft(env, chatId, rawText, imageDataUrl, kind) {
   const existing = await getDraft(env, key);
   const block = imageDataUrl ? `\n\n![Вкладення](${imageDataUrl})\n\n${rawText.trim()}` : rawText.trim();
   const next = existing ? `${existing}\n\n${block}` : block;
-  await env.KV.put(key, next, { expirationTtl: 60 * 60 * 24 * 7 });
+  await env.joewline_bot_drafts.put(key, next, { expirationTtl: 60 * 60 * 24 * 7 });
   return { next };
 }
 
@@ -155,21 +178,21 @@ async function finishDraft(env, chatId) {
   const mode = (await getDraftMode(env, chatId)) || 'thought';
   const normalized = draftText.replace(/^(#case|case:)\s*/i, '').trim();
   const { path, title } = await createCaseFile(normalized, env, { kind: mode });
-  await env.KV.delete(key);
-  await env.KV.delete(`mode:${chatId}`);
+  await env.joewline_bot_drafts.delete(key);
+  await env.joewline_bot_drafts.delete(`mode:${chatId}`);
   await sendTelegram(env, chatId, `Збережено: "${title}"\n${path}`);
 }
 
 async function getDraft(env, key) {
-  return env.KV.get(key);
+  return env.joewline_bot_drafts.get(key);
 }
 
 async function setDraftMode(env, chatId, mode) {
-  await env.KV.put(`mode:${chatId}`, mode, { expirationTtl: 60 * 60 * 24 * 7 });
+  await env.joewline_bot_drafts.put(`mode:${chatId}`, mode, { expirationTtl: 60 * 60 * 24 * 7 });
 }
 
 async function getDraftMode(env, chatId) {
-  return env.KV.get(`mode:${chatId}`);
+  return env.joewline_bot_drafts.get(`mode:${chatId}`);
 }
 
 async function createCaseFile(rawText, env, options = {}) {
@@ -250,6 +273,13 @@ function base64Encode(str) {
   return btoa(binary);
 }
 
+function base64EncodeBuffer(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return btoa(binary);
+}
+
 async function telegramApi(env, method, params) {
   const resp = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, {
     method: 'POST',
@@ -259,7 +289,7 @@ async function telegramApi(env, method, params) {
   return resp.json();
 }
 
-async function downloadPhotoAsDataUrl(photo, env) {
+async function uploadPhotoToGitHub(photo, env) {
   const bestPhoto = photo[photo.length - 1];
   const fileInfo = await telegramApi(env, 'getFile', { file_id: bestPhoto.file_id });
   const filePath = fileInfo.result.file_path;
@@ -267,8 +297,24 @@ async function downloadPhotoAsDataUrl(photo, env) {
   const resp = await fetch(fileUrl);
   const buffer = await resp.arrayBuffer();
   const mimeType = resp.headers.get('content-type') || 'image/jpeg';
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-  return `data:${mimeType};base64,${base64}`;
+  const ext = mimeTypeToExtension(mimeType);
+  const fileName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  const repoPath = `site/public/uploads/telegram/${fileName}`;
+
+  await githubApi(env, 'PUT', `/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${repoPath}`, {
+    message: `upload: ${fileName}`,
+    content: base64EncodeBuffer(buffer),
+    branch: env.GITHUB_BRANCH,
+  });
+
+  return `/uploads/telegram/${fileName}`;
+}
+
+function mimeTypeToExtension(mimeType) {
+  if (mimeType.includes('png')) return 'png';
+  if (mimeType.includes('webp')) return 'webp';
+  if (mimeType.includes('gif')) return 'gif';
+  return 'jpg';
 }
 
 async function sendTelegram(env, chatId, text, replyMarkup = null) {
@@ -278,21 +324,30 @@ async function sendTelegram(env, chatId, text, replyMarkup = null) {
 }
 
 async function sendMenu(env, chatId, text = 'Оберіть режим') {
+  await telegramApi(env, 'setMyCommands', {
+    commands: [
+      { command: 'start', description: 'Відкрити меню' },
+      { command: 'help', description: 'Підказка' },
+      { command: 'done', description: 'Зберегти чернетку' },
+    ],
+  });
+
+  await telegramApi(env, 'setChatMenuButton', {
+    chat_id: chatId,
+    menu_button: { type: 'commands' },
+  });
+
   return sendTelegram(env, chatId, text, getMainKeyboard());
 }
 
 function getMainKeyboard() {
   return {
-    inline_keyboard: [
-      [
-        { text: 'Створити думку', callback_data: 'create_thought' },
-        { text: 'Створити кейс', callback_data: 'create_case' },
-      ],
-      [
-        { text: 'Зберегти', callback_data: 'save_draft' },
-        { text: 'Допомога', callback_data: 'help' },
-      ],
+    keyboard: [
+      [{ text: 'Створити думку' }, { text: 'Створити кейс' }],
+      [{ text: 'Зберегти' }, { text: 'Допомога' }],
     ],
+    resize_keyboard: true,
+    one_time_keyboard: false,
   };
 }
 

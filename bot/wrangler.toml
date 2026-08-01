@@ -14,3 +14,7 @@ GITHUB_OWNER = "floksipet"
 GITHUB_REPO = "joewline-blog"
 GITHUB_BRANCH = "main"
 CONTENT_PATH = "site/src/content/cases"
+
+[[kv_namespaces]]
+binding = "joewline_bot_drafts"
+id = "0c3acf3fc82e4fef80c56064a2301e60"
