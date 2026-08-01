@@ -27,7 +27,7 @@ SITE_URL = "https://floksipet.github.io/joewline-blog/"
 #      https://api.telegram.org/bot<TOKEN>/getUpdates і знайди "chat":{"id": ...}
 #      (для груп/каналів це від'ємне число, напр. -1001234567890).
 #   4. Впиши це число нижче в лапках і виконай `cd bot && npx wrangler deploy`.
-ANNOUNCE_CHAT_ID = ""
+ANNOUNCE_CHAT_ID = "-1004424065462"
 
 [[kv_namespaces]]
 binding = "joewline_bot_drafts"
