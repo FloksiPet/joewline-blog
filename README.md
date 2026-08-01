@@ -128,9 +128,22 @@ curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setWebhook" \
 
 ---
 
+## Анонси в Telegram-канал
+
+Реалізовано інакше, ніж спершу планувалось: не через `announce`-job у
+`.github/workflows/deploy.yml` (той плейсхолдер лишився вимкненим,
+`if: false`, і можна просто ігнорувати або видалити), а прямо з бота —
+кожен збережений через бота запис одразу дублюється в канал, якщо в
+`bot/wrangler.toml` заповнено `ANNOUNCE_CHAT_ID`. Деталі — `RUNBOOK.md`.
+
+## Нотатка без Telegram, з іншого проєкту
+
+`tools/note.sh` — третій вхідний канал: комітить той самий формат файлу
+напряму через `gh api`, без Telegram і без виходу з поточного проєкту.
+Підключений як Claude Code skill (`~/.claude/skills/joewline-note`).
+Деталі й приклад виклику — `RUNBOOK.md` і `tools/note-skill/SKILL.md`.
+
 ## Що можна доробити пізніше (не зараз)
 
-- Увімкнути `announce`-job у `.github/workflows/deploy.yml` для автоанонсів
-  у Telegram-канал (зараз вимкнено, `if: false`).
 - Кастомний домен замість `github.io`.
 - Портфоліо-шар для кейсів зі статусом `done` — окрема тема поза цим ТЗ.

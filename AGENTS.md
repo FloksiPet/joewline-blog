@@ -5,17 +5,28 @@
 ## Що тут є
 - site/ — Astro-сайт, який показує контент з папки site/src/content/cases
 - bot/ — Telegram-бот на Cloudflare Workers, який приймає текст/голос/фото і створює markdown-файли
-- .github/workflows/deploy.yml — автоматичний build + deploy на GitHub Pages при push у main
+- tools/ — note.sh + note.mjs: третій вхідний канал, комітить нотатку напряму через `gh api` без Telegram (для роботи з іншого проєкту); tools/note-skill/ — Claude Code skill, підключений як ~/.claude/skills/joewline-note (симлінк)
+- .github/workflows/deploy.yml — автоматичний build + deploy на GitHub Pages при push у main (тільки для site/, бот деплоїться окремо вручну — див. нижче)
+- RUNBOOK.md — операційна шпаргалка для людини (push/білд/деплой/типові збої)
 
 ## Формат контенту
 Кожен файл у site/src/content/cases/ повинен бути markdown із frontmatter.
 
 Обов'язкові поля:
 - title: string
-- date: YYYY-MM-DD
-- status: draft | in-progress | done
+- date: повний ISO-таймстамп з часом (напр. `2026-08-01T21:30:00.000Z`), не
+  тільки дата — сайт сортує стрічку за датою+часом і показує час у
+  Europe/Kyiv; голий `YYYY-MM-DD` теж пройде схему, але тоді час завжди 00:00
+- status: draft | in-progress | done — публічно на сайті НЕ показується
+  напряму (немає бейджа "чернетка"), але визначає чип і місце показу:
+  kind=thought → завжди чип "роздуми" в стрічці; kind=case + status≠done →
+  чип "нотатка" в стрічці; kind=case + status=done → чип "стаття", пост
+  переїжджає в бічний блок "Завершені статті" й зникає з загальної стрічки
 - kind: thought | case
-- tags: string[]
+- tags: string[] — на сайті це клікабельні кольорові теги (/tags/<тег>/,
+  колір — стабільний хеш від назви). Через Telegram-бота й tools/note.sh
+  теги можна не вказувати окремо: досить лишити #хештег у тексті, він сам
+  витягнеться і сховається з видимого тексту
 - targets: [site] або [site, dou] або [site, drukarnia]
 - canonical: true
 
@@ -23,7 +34,7 @@
 ```markdown
 ---
 title: "Назва"
-date: 2026-08-01
+date: 2026-08-01T12:00:00.000Z
 status: draft
 kind: case
 tags: []
@@ -42,7 +53,7 @@ canonical: true
 ```markdown
 ---
 title: "Коротка думка"
-date: 2026-08-01
+date: 2026-08-01T12:00:00.000Z
 status: draft
 kind: thought
 tags: []
@@ -79,4 +90,30 @@ canonical: true
 - або створити чернетку з основою, а потім редагувати файл у репозиторії вручну.
 
 ## Коли пушити в GitHub
-Після внесення контенту або змін у структуру треба робити коміт і push у main, щоб GitHub Actions перебудував сайт.
+Після внесення контенту або змін у структуру треба робити коміт і push у main, щоб GitHub Actions перебудував сайт. Це стосується ЛИШЕ `site/` — workflow фільтрується по `site/**` і не чіпає `bot/`.
+
+## Третій канал — нотатка з іншого проєкту
+`tools/note.sh` (обгортка над `tools/note.mjs`) дозволяє створити той самий
+формат файлу напряму через `gh api`, без Telegram і без переходу в цей
+репозиторій — корисно, коли працюєш в іншому проєкті й хочеш занотувати
+щось про нього одразу. Підключений як Claude Code skill
+`~/.claude/skills/joewline-note` (симлінк на `tools/note-skill/SKILL.md`) —
+спрацьовує на природні прохання типу "занотуй це в блог". Деталі й приклад
+виклику — у `tools/note-skill/SKILL.md` і `RUNBOOK.md`.
+
+## Готчі, які варто знати одразу (щоб не переоткривати заново)
+- **Бот не має автодеплою.** Зміни в `bot/src/index.js` чи
+  `bot/wrangler.toml` не діють на живого бота, доки не виконати
+  `cd bot && npx wrangler deploy` вручну. Пуш у git тут не рятує.
+- **`@astrojs/sitemap` навмисно запінений на `3.2.1`** в `site/package.json`.
+  Версії 3.4+ використовують інтеграційний хук `astro:routes:resolved`,
+  якого немає в поточному Astro `4.16.19` — білд впаде з
+  `Cannot read properties of undefined (reading 'reduce')`. Не онови
+  випадково без перевірки реальним білдом.
+- **Фото від бота/tools/note.sh — корене-відносні шляхи** (`/uploads/...`)
+  без урахування `base` (`/joewline-blog/`). Це навмисно виправляється
+  build-time rehype-плагіном (`site/src/lib/rehype-base-url.mjs`), а не
+  в самому боті — не треба "чинити" це на боці бота.
+- **Node не завжди в PATH** у нових шеллах на цій машині (стоїть через
+  nvm) — тому `tools/note.sh`, а не голий `node tools/note.mjs`, є точкою
+  входу: сам підвантажує nvm, якщо треба.
