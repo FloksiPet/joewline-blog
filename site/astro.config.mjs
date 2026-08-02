@@ -55,7 +55,17 @@ export default defineConfig({
           {
             urlPattern: ({ request }) => request.mode === 'navigate',
             handler: 'NetworkFirst',
-            options: { cacheName: 'pages', networkTimeoutSeconds: 3 },
+            options: {
+              cacheName: 'pages',
+              networkTimeoutSeconds: 3,
+              // Без цього Workbox кешує БУДЬ-яку відповідь мережі, включно
+              // з 404 — якщо хтось відкрив посилання на щойно опублікований
+              // допис до того, як GitHub Pages встиг задеплоїтись (~30-60с),
+              // той 404 застрягав у кеші service worker'а і показувався й
+              // після того, як сторінка вже була жива. cacheableResponse
+              // обмежує кеш лише успішними (200) відповідями.
+              cacheableResponse: { statuses: [200] },
+            },
           },
         ],
       },
