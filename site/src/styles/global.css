@@ -380,4 +380,55 @@ article img,
 .sidebar .case-list li { padding: 14px 0; }
 .sidebar .case-list a { font-size: 0.95rem; }
 
+.reactions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.reaction-like,
+.reaction-views {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.reaction-like {
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.reaction-like svg,
+.reaction-views svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+.reaction-like:hover { color: var(--copper); }
+.reaction-like.is-liked {
+  color: var(--copper);
+}
+.reaction-like.is-liked svg {
+  fill: var(--copper);
+}
+
 .muted { color: var(--muted); }
+
+.site-footer {
+  max-width: 1080px;
+  margin: 40px auto 0;
+  padding: 20px 20px 40px;
+  border-top: 1px solid #333c42;
+  text-align: center;
+}
+.site-footer a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.site-footer a:hover { color: var(--copper); }

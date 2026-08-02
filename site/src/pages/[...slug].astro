@@ -1,9 +1,10 @@
 ---
 import Base from '../layouts/Base.astro';
 import Tags from '../components/Tags.astro';
+import ReactionBar from '../components/ReactionBar.astro';
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { displayKind, formatDate } from '../lib/labels';
-import { excerpt } from '../lib/entries';
+import { excerpt, plainTextLength } from '../lib/entries';
 import { firstImagePath } from '../lib/og';
 
 export async function getStaticPaths() {
@@ -25,6 +26,11 @@ const kind = displayKind(entry);
 const description = excerpt(entry.body);
 const imagePath = firstImagePath(entry.body);
 const ogImage = imagePath ? `${import.meta.env.BASE_URL}${imagePath.replace(/^\//, '')}` : undefined;
+
+// Коротенькі нотатки-на-два-слова пошуковикам не цікаві й лише
+// розмивають видачу — не даємо їх індексувати, самі вони на сайті лишаються.
+const INDEXABLE_MIN_LENGTH = 400;
+const noindex = plainTextLength(entry.body) < INDEXABLE_MIN_LENGTH;
 ---
 <Base
   title={entry.data.title}
@@ -32,6 +38,7 @@ const ogImage = imagePath ? `${import.meta.env.BASE_URL}${imagePath.replace(/^\/
   image={ogImage}
   type="article"
   publishedTime={entry.data.date.toISOString()}
+  noindex={noindex}
 >
   <article class="article-page">
     <p class="back-link"><a href={import.meta.env.BASE_URL}>&larr; уся стрічка</a></p>
@@ -42,5 +49,6 @@ const ogImage = imagePath ? `${import.meta.env.BASE_URL}${imagePath.replace(/^\/
     </div>
     <Content />
     <Tags tags={entry.data.tags} />
+    <ReactionBar slug={entry.slug} trackView />
   </article>
 </Base>

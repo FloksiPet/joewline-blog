@@ -7,6 +7,7 @@ interface Props {
   image?: string;
   type?: 'website' | 'article';
   publishedTime?: string;
+  noindex?: boolean;
 }
 
 const DEFAULT_DESCRIPTION =
@@ -18,11 +19,44 @@ const {
   image,
   type = 'website',
   publishedTime,
+  noindex = false,
 } = Astro.props;
 
 const pageTitle = `${title} — joewline`;
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const ogImageURL = new URL(image ?? `${import.meta.env.BASE_URL}og-default.png`, Astro.site);
+
+// JSON-LD — структуровані дані для пошуковиків і AI-агентів (Perplexity,
+// ChatGPT search тощо), які саме звідси найохочіше беруть заголовок/дату/
+// автора для цитування, а не парсять довільний HTML.
+const jsonLd =
+  type === 'article'
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        headline: title,
+        description,
+        image: ogImageURL.href,
+        url: canonicalURL.href,
+        datePublished: publishedTime,
+        dateModified: publishedTime,
+        inLanguage: 'uk',
+        author: { '@type': 'Person', name: 'JoeWline' },
+        publisher: {
+          '@type': 'Organization',
+          name: 'joewline',
+          logo: { '@type': 'ImageObject', url: new URL(`${import.meta.env.BASE_URL}apple-touch-icon.png`, Astro.site).href },
+        },
+        mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalURL.href },
+      }
+    : {
+        '@context': 'https://schema.org',
+        '@type': 'Blog',
+        name: 'joewline',
+        description,
+        url: canonicalURL.href,
+        inLanguage: 'uk',
+      };
 ---
 <!doctype html>
 <html lang="uk">
@@ -32,9 +66,11 @@ const ogImageURL = new URL(image ?? `${import.meta.env.BASE_URL}og-default.png`,
     <meta name="theme-color" content="#1c2126" />
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}jwl-icon.svg`} />
     <link rel="apple-touch-icon" href={`${import.meta.env.BASE_URL}apple-touch-icon.png`} />
+    <link rel="manifest" href={`${import.meta.env.BASE_URL}manifest.webmanifest`} />
     <link rel="canonical" href={canonicalURL} />
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
+    <meta name="robots" content={noindex ? 'noindex, follow' : 'index, follow'} />
 
     <meta property="og:site_name" content="joewline" />
     <meta property="og:type" content={type} />
@@ -49,6 +85,8 @@ const ogImageURL = new URL(image ?? `${import.meta.env.BASE_URL}og-default.png`,
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageURL} />
+
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   </head>
   <body>
     <header class="site-header">
@@ -63,6 +101,9 @@ const ogImageURL = new URL(image ?? `${import.meta.env.BASE_URL}og-default.png`,
     <main>
       <slot />
     </main>
+    <footer class="site-footer">
+      <a href="https://t.me/jwl_blog" target="_blank" rel="noopener noreferrer">Telegram-канал</a>
+    </footer>
   </body>
 </html>
 
@@ -127,6 +168,65 @@ const ogImageURL = new URL(image ?? `${import.meta.env.BASE_URL}og-default.png`,
     });
   }
 
+  // Лайки/перегляди — окремий публічний Cloudflare Worker (той самий, що
+  // приймає Telegram-нотатки, але через /reactions/*, без секрету бота).
+  const REACTIONS_API = 'https://joewline-intake-bot.joewline.workers.dev/reactions';
+
+  function setupReactions() {
+    document.querySelectorAll<HTMLElement>('.reactions').forEach(async (el) => {
+      const slug = el.dataset.slug;
+      if (!slug) return;
+      const trackView = el.dataset.trackView === '1';
+      const likeBtn = el.querySelector<HTMLButtonElement>('.reaction-like');
+      const likeCount = likeBtn?.querySelector<HTMLElement>('.reaction-count');
+      const viewCount = el.querySelector<HTMLElement>('.reaction-views .reaction-count');
+      const encodedSlug = encodeURIComponent(slug);
+
+      const applyCounts = (data: { views?: number; likes?: number; liked?: boolean }) => {
+        if (typeof data.likes === 'number' && likeCount) likeCount.textContent = String(data.likes);
+        if (typeof data.views === 'number' && viewCount) viewCount.textContent = String(data.views);
+        if (typeof data.liked === 'boolean' && likeBtn) {
+          likeBtn.classList.toggle('is-liked', data.liked);
+          likeBtn.setAttribute('aria-pressed', String(data.liked));
+        }
+      };
+
+      try {
+        const res = await fetch(`${REACTIONS_API}/counts/${encodedSlug}`);
+        applyCounts(await res.json());
+      } catch {
+        // немає мережі чи Worker недоступний — лічильники просто лишаться "–"
+      }
+
+      if (trackView) {
+        fetch(`${REACTIONS_API}/view/${encodedSlug}`, { method: 'POST' })
+          .then((res) => res.json())
+          .then(applyCounts)
+          .catch(() => {});
+      }
+
+      likeBtn?.addEventListener('click', async () => {
+        likeBtn.disabled = true;
+        try {
+          const res = await fetch(`${REACTIONS_API}/like/${encodedSlug}`, { method: 'POST' });
+          applyCounts(await res.json());
+        } catch {
+          // залишити попередній стан, якщо запит не пройшов
+        }
+        likeBtn.disabled = false;
+      });
+    });
+  }
+
   setupCarousels();
   setupLightbox();
+  setupReactions();
+</script>
+
+<script>
+  // Реєстрація service worker для PWA. Astro не інжектить це сам (на
+  // відміну від звичайного Vite SPA з одним index.html) — @vite-pwa/astro
+  // лише генерує sw.js/manifest, реєструвати треба явно.
+  import { registerSW } from 'virtual:pwa-register';
+  registerSW({ immediate: true });
 </script>

@@ -15,6 +15,10 @@ GITHUB_REPO = "joewline-blog"
 GITHUB_BRANCH = "main"
 CONTENT_PATH = "site/src/content/cases"
 SITE_URL = "https://floksipet.github.io/joewline-blog/"
+# Origin, з якого дозволено CORS-запити до /reactions/* (лайки/перегляди).
+# Публічний ендпоінт викликає сайт з браузера відвідувача — без цього
+# обмеження будь-який сторонній сайт міг би так само дьоргати лічильники.
+SITE_ORIGIN = "https://floksipet.github.io"
 
 # Chat ID групи/каналу, куди бот дублює анонс кожного збереженого запису.
 # Порожнє значення — анонс просто вимкнений, нічого не ламається.
@@ -32,3 +36,7 @@ ANNOUNCE_CHAT_ID = "-1004424065462"
 [[kv_namespaces]]
 binding = "joewline_bot_drafts"
 id = "0c3acf3fc82e4fef80c56064a2301e60"
+
+[[kv_namespaces]]
+binding = "joewline_reactions"
+id = "dd08923420ab460fac51fa943df9760c"

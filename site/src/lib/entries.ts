@@ -11,17 +11,28 @@ export function sortEntries(entries: CollectionEntry<'cases'>[]): CollectionEntr
   });
 }
 
-export function excerpt(body: string, maxLength = 200): string {
-  const plain = body
+function toPlainText(body: string): string {
+  return body
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/[*_`>]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
 
+export function excerpt(body: string, maxLength = 200): string {
+  const plain = toPlainText(body);
   if (plain.length <= maxLength) return plain;
   const cut = plain.slice(0, maxLength);
   const lastSpace = cut.lastIndexOf(' ');
   return `${cut.slice(0, lastSpace > 0 ? lastSpace : maxLength)}…`;
+}
+
+// Довжина "чистого" тексту без markdown-розмітки — використовується, щоб
+// вирішити, чи допис узагалі вартий індексації пошуковиками (коротке
+// "збереження в чернетку" на пару слів лише засмічує видачу, а не
+// приносить трафік).
+export function plainTextLength(body: string): number {
+  return toPlainText(body).length;
 }

@@ -57,6 +57,15 @@ function modeText(mode) {
 
 export default {
   async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // Публічний ендпоінт для лайків/переглядів з сайту — окрема гілка,
+    // ДО перевірки Telegram-секрету нижче: відвідувачі сайту не мають і
+    // не повинні мати цей секрет, він лише для самого Telegram-вебхука.
+    if (url.pathname.startsWith('/reactions/')) {
+      return handleReactions(request, env, url);
+    }
+
     if (request.method !== 'POST') {
       return new Response('ok', { status: 200 });
     }
@@ -536,4 +545,112 @@ async function githubApi(env, method, path, body) {
     throw new Error(`GitHub API ${resp.status}: ${errText.slice(0, 200)}`);
   }
   return resp.json();
+}
+
+// ---- Реакції (лайки/перегляди) ----
+//
+// Публічний, неавторизований ендпоінт — його викликає JS у браузері будь-
+// якого відвідувача сайту, тож тут свій, легший захист від накрутки, а не
+// секрет-токен, як для Telegram-вебхука:
+//   - CORS обмежений одним конкретним origin (сайтом), не "*"
+//   - перегляд рахується не за кожен запит, а раз на IP+пост на 12 годин
+//     (SHA-256 хеш IP+slug — сирий IP ніде не зберігається)
+//   - лайк — раз на IP+пост назавжди (можна зняти, повторно поставити)
+//   - грубий rate-limit на весь /reactions/* — 60 запитів/хв на IP
+//
+// Чесно про межі: це стримує випадкове/скриптове накручування з одного
+// місця, а не гарантований захист від рішучого атакувальника з пулом IP —
+// для особистого блогу без комерційної цінності лічильників цього досить,
+// повноцінний anti-bot (напр. Turnstile) тут явно надмірний.
+
+async function handleReactions(request, env, url) {
+  const origin = request.headers.get('origin') || '';
+  const allowOrigin = origin === env.SITE_ORIGIN ? origin : '';
+  const corsHeaders = {
+    'access-control-allow-origin': allowOrigin,
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-headers': 'content-type',
+    vary: 'origin',
+  };
+
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  const jsonResponse = (data, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, 'content-type': 'application/json' } });
+
+  const parts = url.pathname.split('/').filter(Boolean); // ['reactions', 'counts'|'view'|'like', slug]
+  const action = parts[1];
+  const slug = decodeURIComponent(parts[2] || '');
+
+  if (!slug || !['counts', 'view', 'like'].includes(action)) {
+    return jsonResponse({ error: 'not_found' }, 404);
+  }
+
+  const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+
+  if (await isRateLimited(env, ip)) {
+    return jsonResponse({ error: 'rate_limited' }, 429);
+  }
+
+  const visitor = await hashVisitor(ip, slug);
+
+  if (action === 'counts' && request.method === 'GET') {
+    const [views, likes, liked] = await Promise.all([
+      getCounter(env, `views:${slug}`),
+      getCounter(env, `likes:${slug}`),
+      env.joewline_reactions.get(`liked:${slug}:${visitor}`),
+    ]);
+    return jsonResponse({ views, likes, liked: Boolean(liked) });
+  }
+
+  if (action === 'view' && request.method === 'POST') {
+    const seenKey = `seen:${slug}:${visitor}`;
+    if (!(await env.joewline_reactions.get(seenKey))) {
+      await bumpCounter(env, `views:${slug}`, 1);
+      await env.joewline_reactions.put(seenKey, '1', { expirationTtl: 60 * 60 * 12 });
+    }
+    return jsonResponse({ views: await getCounter(env, `views:${slug}`) });
+  }
+
+  if (action === 'like' && request.method === 'POST') {
+    const likedKey = `liked:${slug}:${visitor}`;
+    const alreadyLiked = await env.joewline_reactions.get(likedKey);
+    if (alreadyLiked) {
+      await env.joewline_reactions.delete(likedKey);
+      await bumpCounter(env, `likes:${slug}`, -1);
+    } else {
+      await env.joewline_reactions.put(likedKey, '1');
+      await bumpCounter(env, `likes:${slug}`, 1);
+    }
+    return jsonResponse({ likes: await getCounter(env, `likes:${slug}`), liked: !alreadyLiked });
+  }
+
+  return jsonResponse({ error: 'method_not_allowed' }, 405);
+}
+
+async function hashVisitor(ip, slug) {
+  const data = new TextEncoder().encode(`joewline-reactions:${ip}:${slug}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function getCounter(env, key) {
+  const raw = await env.joewline_reactions.get(key);
+  return raw ? parseInt(raw, 10) : 0;
+}
+
+async function bumpCounter(env, key, delta) {
+  const next = Math.max(0, (await getCounter(env, key)) + delta);
+  await env.joewline_reactions.put(key, String(next));
+  return next;
+}
+
+async function isRateLimited(env, ip) {
+  const key = `ratelimit:${ip}`;
+  const current = await getCounter(env, key);
+  if (current >= 60) return true;
+  await env.joewline_reactions.put(key, String(current + 1), { expirationTtl: 60 });
+  return false;
 }

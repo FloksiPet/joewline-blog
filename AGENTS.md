@@ -112,6 +112,20 @@ CommonMark немає власного синтаксису), `pre` з мово�
 спрацьовує на природні прохання типу "занотуй це в блог". Деталі й приклад
 виклику — у `tools/note-skill/SKILL.md` і `RUNBOOK.md`.
 
+## PWA, лайки/перегляди, SEO — де що лежить
+- **PWA**: `@vite-pwa/astro` в `astro.config.mjs`, реєстрація SW —
+  inline-скрипт у `Base.astro` (`virtual:pwa-register`, автоматично НЕ
+  інжектиться, Astro не SPA). Іконки — `site/public/icon-*.png`.
+- **Лайки/перегляди**: `/reactions/*` — частина bot Worker
+  (`handleReactions` у `bot/src/index.js`), окрема KV
+  (`joewline_reactions`). Захист від накрутки легкий (IP-хеш дедуп,
+  rate-limit, CORS на один origin) — деталі в `RUNBOOK.md`, не намагайся
+  зробити "непробивним", це свідомий компроміс для особистого блогу.
+- **SEO**: `noindex` для дописів коротших за 400 символів (константа
+  `INDEXABLE_MIN_LENGTH` у `[...slug].astro` ТА в `llms.txt.ts` — синхронно
+  в обох), JSON-LD (`BlogPosting`/`Blog`) в `Base.astro`, `/llms.txt`
+  генерується build-time з реального контенту.
+
 ## Готчі, які варто знати одразу (щоб не переоткривати заново)
 - **Бот не має автодеплою.** Зміни в `bot/src/index.js` чи
   `bot/wrangler.toml` не діють на живого бота, доки не виконати

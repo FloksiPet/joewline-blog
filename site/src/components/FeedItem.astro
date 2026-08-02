@@ -1,5 +1,6 @@
 ---
 import Tags from './Tags.astro';
+import ReactionBar from './ReactionBar.astro';
 import { displayKind, formatDate } from '../lib/labels';
 import type { CollectionEntry } from 'astro:content';
 
@@ -23,4 +24,5 @@ const kind = displayKind(entry);
     <Content />
   </div>
   <Tags tags={entry.data.tags} />
+  <ReactionBar slug={entry.slug} />
 </article>

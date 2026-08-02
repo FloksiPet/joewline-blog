@@ -61,8 +61,63 @@ gh run watch $(gh run list --branch main --limit 1 --json databaseId -q '.[0].da
 - **Звичайні змінні** (лежать відкрито в `bot/wrangler.toml`, коментарі
   там же): `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_BRANCH`, `CONTENT_PATH`,
   `SITE_URL`, `ANNOUNCE_CHAT_ID` (зараз — `-1004424065462`, канал
-  `@jwl_blog`). Зміна будь-якої з них вимагає `wrangler deploy`, щоб
-  застосуватись.
+  `@jwl_blog`), `SITE_ORIGIN` (для CORS на `/reactions/*`, див. нижче).
+  Зміна будь-якої з них вимагає `wrangler deploy`, щоб застосуватись.
+
+## PWA (лого на головному екрані, офлайн-кеш)
+
+Сайт — повноцінний PWA через `@vite-pwa/astro`: `manifest.webmanifest` +
+service worker (`sw.js`, генерується автоматично при білді). Іконки —
+`site/public/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`
+(рендерені з `jwl-icon.svg`; якщо міняєш лого — перегенеруй і їх, інакше
+іконка на головному екрані лишиться старою).
+
+Реєстрація service worker — явний inline-скрипт у `Base.astro`
+(`virtual:pwa-register`), бо на відміну від звичайного Vite SPA з одним
+`index.html`, Astro сам нічого не інжектить у кожну зі своїх сторінок.
+
+`registerType: 'autoUpdate'` в `astro.config.mjs` — нова версія кешу
+підхоплюється сама у фоні, без "онови сторінку" діалогу. HTML-навігація
+йде через `NetworkFirst` (мережа першою, кеш — тільки якщо офлайн), щоб
+новий контент не залипав застарілим у кеші після наступного деплою.
+
+## Лайки/перегляди (`/reactions/*`)
+
+Публічний, неавторизований шматок того самого bot Worker (не окремий
+сервіс) — `handleReactions` у `bot/src/index.js`, окрема гілка ДО
+перевірки Telegram-секрету. Своя KV (`joewline_reactions`, окрема від
+`joewline_bot_drafts`).
+
+Захист від накрутки — навмисно легкий, не "бронebized":
+- перегляд рахується не за кожен запит, а раз на IP+пост на 12 годин
+  (SHA-256 хеш IP+slug, сирий IP ніде не зберігається);
+- лайк — раз на IP+пост (можна зняти й повторно поставити);
+- rate-limit 60 запитів/хв на IP по всьому `/reactions/*`;
+- CORS обмежений одним origin (`SITE_ORIGIN` у `wrangler.toml`), не `*`.
+
+Це стримує випадкове/скриптове накручування з одного місця, а не
+гарантований захист від рішучого атакувальника з пулом IP — для
+лічильників особистого блогу без комерційної цінності цього достатньо;
+повноцінний anti-bot (напр. Cloudflare Turnstile) тут явно надмірний.
+
+Змінити ліміти/TTL — редагуй константи прямо в `handleReactions` і
+сусідніх функціях (`isRateLimited`, TTL у `expirationTtl`), потім
+`wrangler deploy`.
+
+## SEO: noindex для коротких дописів, JSON-LD, llms.txt
+
+- Дописи коротші за 400 символів чистого тексту (без markdown-розмітки)
+  отримують `<meta name="robots" content="noindex, follow">` — на сайті
+  лишаються, з пошуку прибрані. Поріг — константа `INDEXABLE_MIN_LENGTH`
+  в `site/src/pages/[...slug].astro` (і окремо, та сама логіка, в
+  `site/src/pages/llms.txt.ts` — якщо міняєш поріг, онови в обох місцях).
+- Кожна сторінка має JSON-LD (`BlogPosting` для статей, `Blog` для решти)
+  — це те, що найохочіше читають AI-пошуковики (Perplexity, ChatGPT
+  search) для цитування, а не довільний HTML-парсинг.
+- `/llms.txt` — текстовий покажчик "вартих уваги" (тих самих, що
+  індексуються) записів для AI-агентів, аналог sitemap.xml, але для LLM.
+  Генерується build-time з реального контенту (`site/src/pages/llms.txt.ts`)
+  — окремо оновлювати вручну не треба.
 
 ## Типові завдання
 
