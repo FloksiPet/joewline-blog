@@ -145,9 +145,9 @@ export default {
         rawText = await transcribeVoice(message.voice.file_id, env);
       } else if (message.photo) {
         imageDataUrl = await uploadPhotoToGitHub(message.photo, env);
-        rawText = message.caption || message.text || '';
+        rawText = entitiesToMarkdown(message.caption || message.text || '', message.caption_entities || message.entities);
       } else if (text) {
-        rawText = text;
+        rawText = entitiesToMarkdown(message.text || '', message.entities);
       }
 
       if (rawText && rawText.trim().match(/^(#case|case:)/i)) {
@@ -257,6 +257,76 @@ async function setDraftMode(env, chatId, mode) {
 
 async function getDraftMode(env, chatId) {
   return env.joewline_bot_drafts.get(`mode:${chatId}`);
+}
+
+// Telegram шле контекстне форматування (жирний/курсив/код/закреслення/
+// посилання і т.д.) окремо від тексту — масивом entities з offset/length
+// у UTF-16 code units. JS-рядки теж індексуються в UTF-16 code units, тож
+// offset/length з Telegram напряму збігаються з .slice() на JS-рядку —
+// перераховувати сурогатні пари не треба.
+//
+// Entities від Telegram або не перетинаються, або вкладені одна в одну
+// (дерево) — часткового перетину не буває, це дозволяє безпечно побудувати
+// дерево й рекурсивно згорнути його в markdown, не боячись поламати
+// вкладеність дужок/зірочок.
+const ENTITY_WRAPPERS = {
+  bold: (inner) => `**${inner}**`,
+  italic: (inner) => `*${inner}*`,
+  underline: (inner) => `<u>${inner}</u>`,
+  strikethrough: (inner) => `~~${inner}~~`,
+  code: (inner) => `\`${inner}\``,
+  pre: (inner, node) => `\n\`\`\`${node.language || ''}\n${inner}\n\`\`\`\n`,
+  text_link: (inner, node) => `[${inner}](${node.url})`,
+  blockquote: (inner) => inner.split('\n').map((line) => `> ${line}`).join('\n'),
+  expandable_blockquote: (inner) => inner.split('\n').map((line) => `> ${line}`).join('\n'),
+};
+// Інші типи (mention, hashtag, cashtag, bot_command, url, email,
+// phone_number, text_mention, custom_emoji, spoiler) навмисно без обгортки:
+// текст уже читається сам по собі, а для spoiler на сайті ще нема
+// відповідного стилю, щоб чесно його відтворити.
+
+function buildEntityTree(text, entities) {
+  const sorted = [...entities].sort((a, b) => a.offset - b.offset || b.length - a.length);
+  const root = { type: 'root', offset: 0, length: text.length, children: [] };
+  const stack = [root];
+
+  for (const entity of sorted) {
+    const start = entity.offset;
+    while (stack.length > 1 && stack[stack.length - 1].offset + stack[stack.length - 1].length <= start) {
+      stack.pop();
+    }
+    const node = { ...entity, children: [] };
+    stack[stack.length - 1].children.push(node);
+    stack.push(node);
+  }
+
+  return root;
+}
+
+function renderEntityNode(text, node) {
+  // code/pre — листові вузли: беремо текст як є, без рекурсії в дітей і
+  // без ризику, що вкладене форматування поламає символи всередині коду.
+  if (node.type === 'code' || node.type === 'pre') {
+    const raw = text.slice(node.offset, node.offset + node.length);
+    return ENTITY_WRAPPERS[node.type](raw, node);
+  }
+
+  let cursor = node.offset;
+  let inner = '';
+  for (const child of node.children) {
+    inner += text.slice(cursor, child.offset);
+    inner += renderEntityNode(text, child);
+    cursor = child.offset + child.length;
+  }
+  inner += text.slice(cursor, node.offset + node.length);
+
+  const wrap = ENTITY_WRAPPERS[node.type];
+  return wrap ? wrap(inner, node) : inner;
+}
+
+function entitiesToMarkdown(text, entities) {
+  if (!text || !entities || entities.length === 0) return text || '';
+  return renderEntityNode(text, buildEntityTree(text, entities));
 }
 
 // Хештеги (#тег) будь-де в тексті стають тегами на сайті — не треба
