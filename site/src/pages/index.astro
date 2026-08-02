@@ -42,7 +42,7 @@ const feedEntries = allEntries.filter((entry) => entry.data.status !== 'done');
               <div class="meta-top">
                 <span class={`pill ${displayKind(entry).className}`}>{displayKind(entry).label}</span>
               </div>
-              <a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a>
+              <a href={`${import.meta.env.BASE_URL}${entry.slug}/`}>{entry.data.title}</a>
               <div class="meta">{formatDate(entry.data.date)}</div>
               <p class="excerpt">{excerpt(entry.body)}</p>
               <Tags tags={entry.data.tags} />

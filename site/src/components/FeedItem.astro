@@ -12,7 +12,12 @@ interface Props {
 
 const { entry } = Astro.props;
 const kind = displayKind(entry);
-const href = `${import.meta.env.BASE_URL}${entry.slug}`;
+// Обов'язково зі "/" в кінці: без неї GitHub Pages 301-редіректить на
+// версію зі слешем, а для не-ASCII (кириличних) слагів Location-заголовок
+// цього редіректу йде сирими UTF-8-байтами без percent-encoding —
+// браузер трактує їх як Latin-1 і посилання розсипається на криві
+// символи. Зі слешем одразу редіректу просто не буде.
+const href = `${import.meta.env.BASE_URL}${entry.slug}/`;
 
 // У стрічці показуємо лише прев'ю (перший абзац + мініатюра), а не весь
 // текст допису — повний вміст лишається на сторінці самого допису.
