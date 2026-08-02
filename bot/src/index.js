@@ -224,20 +224,38 @@ async function finishDraft(env, chatId, options = {}) {
   const normalized = draftText.replace(/^(#case|case:)\s*/i, '').trim();
   const tags = extractTags(normalized);
   const withoutTags = stripTags(normalized);
-  const { path, title, slug } = await createCaseFile(withoutTags, env, { kind: mode, status, tags });
+  const { title, slug } = await createCaseFile(withoutTags, env, { kind: mode, status, tags });
   await env.joewline_bot_drafts.delete(key);
   await env.joewline_bot_drafts.delete(`mode:${chatId}`);
 
   const tagsNote = tags.length > 0 ? `\nТеги: ${tags.map((t) => `#${t}`).join(' ')}` : '';
   const statusNote = status === 'done' ? ' (стаття)' : '';
-  await sendTelegram(env, chatId, `Збережено${statusNote}: "${title}"\n${path}${tagsNote}`, getMainKeyboard(env));
-  await announceNewPost(env, { title, slug, tags, status });
+  const siteUrl = env.SITE_URL || 'https://floksipet.github.io/joewline-blog/';
+  const postUrl = `${siteUrl}${slug}/`;
+  // Посилання на сайт, а не сирий шлях у репозиторії (`path`) — раніше тут
+  // був `path`, який не відкривався у браузері. Явно попереджаємо про
+  // затримку деплою (~30-60с), бо посилання, відкрите одразу після цього
+  // повідомлення, може ще на мить показати 404, доки GitHub Pages не
+  // перезбереться.
+  await sendTelegram(
+    env,
+    chatId,
+    `Збережено${statusNote}: "${title}"\n${postUrl}${tagsNote}\n(сайт оновиться за ~30-60с)`,
+    getMainKeyboard(env)
+  );
+  await announceNewPost(env, { title, slug, tags, status, bodyMarkdown: withoutTags });
 }
 
 // Дублює анонс кожного збереженого запису в групу/канал, якщо той
 // налаштований (ANNOUNCE_CHAT_ID у wrangler.toml). Якщо ні — просто нічого
 // не робить, збереження в репозиторій це не зупиняє.
-async function announceNewPost(env, { title, slug, tags, status }) {
+//
+// На відміну від сайту, у Telegram-групу йде не лише посилання, а й сам
+// текст посту (сконвертований назад у Telegram HTML-розмітку) — фото при
+// цьому навмисно НЕ вставляються прямо в текст: Telegram не вміє показати
+// їх як карусель/галерею так, як це робить сайт, тож вони йдуть окремим
+// фото/альбомом перед текстом, а сама "галерея" в тексті просто відсутня.
+async function announceNewPost(env, { title, slug, tags, status, bodyMarkdown }) {
   if (!env.ANNOUNCE_CHAT_ID) return;
 
   const siteUrl = env.SITE_URL || 'https://floksipet.github.io/joewline-blog/';
@@ -245,15 +263,119 @@ async function announceNewPost(env, { title, slug, tags, status }) {
   const emoji = status === 'done' ? '📄' : '📝';
   const tagsLine = tags.length > 0 ? `\n${tags.map((t) => `#${t}`).join(' ')}` : '';
 
+  const images = extractImagePaths(bodyMarkdown).map((src) => resolveImageUrl(env, src));
+
+  try {
+    // Медіа шлються окремо й не блокують текст нижче, якщо, наприклад,
+    // GitHub ще не встиг роздати щойно закомічений файл фото.
+    await sendAnnounceMedia(env, env.ANNOUNCE_CHAT_ID, images);
+  } catch (err) {
+    // ігноруємо — текст анонсу все одно піде далі
+  }
+
+  const header = `${emoji} <b>${escapeHtml(title)}</b>\n\n`;
+  const footer = `\n\n${postUrl}${tagsLine}`;
+  const budget = Math.max(200, TELEGRAM_TEXT_LIMIT - header.length - footer.length - 300);
+  const { text: safeBody, truncated } = truncateForTelegram(stripImagesMarkdown(bodyMarkdown), budget);
+  const html = `${header}${markdownToTelegramHtml(safeBody)}${truncated ? '…' : ''}${footer}`;
+
   try {
     await telegramApi(env, 'sendMessage', {
       chat_id: env.ANNOUNCE_CHAT_ID,
-      text: `${emoji} ${title}\n${postUrl}${tagsLine}`,
+      text: html,
+      parse_mode: 'HTML',
+      link_preview_options: { is_disabled: images.length > 0 },
     });
   } catch (err) {
     // Анонс — це бонус, а не критична частина потоку: якщо бот ще не
     // адмін групи чи ID неправильний, головне збереження вже відбулось.
   }
+}
+
+const TELEGRAM_TEXT_LIMIT = 4096;
+
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Прибирає markdown-картинки з тексту анонсу — в Telegram-групу вони йдуть
+// окремим sendPhoto/sendMediaGroup, а не інлайном у повідомленні.
+function stripImagesMarkdown(text) {
+  return text
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function extractImagePaths(text) {
+  return [...text.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1]);
+}
+
+// Фото від бота лежать у репозиторії відносними шляхами (`/uploads/...`) —
+// сайт роздає їх лише після деплою GitHub Pages (~30-60с), а анонс іде
+// одразу. GitHub Raw роздає щойно закомічений файл миттєво, тож для
+// Telegram-анонсу беремо звідти, а не з SITE_URL.
+function resolveImageUrl(env, src) {
+  if (/^https?:\/\//i.test(src)) return src;
+  const cleanPath = src.startsWith('/') ? src : `/${src}`;
+  return `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/site/public${cleanPath}`;
+}
+
+async function sendAnnounceMedia(env, chatId, images) {
+  if (images.length === 0) return;
+  if (images.length === 1) {
+    await telegramApi(env, 'sendPhoto', { chat_id: chatId, photo: images[0] });
+    return;
+  }
+  // sendMediaGroup приймає 2-10 елементів — більше 10 фото в одному пості
+  // для особистого блогу вкрай малоймовірно, тож зайве просто відкидаємо.
+  await telegramApi(env, 'sendMediaGroup', {
+    chat_id: chatId,
+    media: images.slice(0, 10).map((url) => ({ type: 'photo', media: url })),
+  });
+}
+
+// Обрізає текст під ліміт Telegram (4096 символів на sendMessage), по
+// можливості на межі абзацу/речення, щоб не розірвати форматування
+// посеред слова.
+function truncateForTelegram(text, maxLength) {
+  if (text.length <= maxLength) return { text, truncated: false };
+  const slice = text.slice(0, maxLength);
+  const paragraphBreak = slice.lastIndexOf('\n\n');
+  const spaceBreak = slice.lastIndexOf(' ');
+  const cut = paragraphBreak > maxLength * 0.5 ? paragraphBreak : spaceBreak > maxLength * 0.5 ? spaceBreak : maxLength;
+  return { text: slice.slice(0, cut).trimEnd(), truncated: true };
+}
+
+// Зворотна конвертація до entitiesToMarkdown — markdown, який зберігається
+// у файлі кейсу, назад у Telegram HTML-розмітку (parse_mode: 'HTML') для
+// анонсу в групу. HTML-екранування йде першим кроком, тому символи
+// markdown-синтаксису (*, `, [, ] і т.д.) лишаються як є і безпечно
+// розпізнаються нижче.
+function markdownToTelegramHtml(markdown) {
+  let html = escapeHtml(markdown);
+
+  html = html.replace(/&lt;u&gt;/g, '<u>').replace(/&lt;\/u&gt;/g, '</u>');
+
+  html = html.replace(/```([a-zA-Z0-9]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const cls = lang ? ` class="language-${lang}"` : '';
+    return `<pre><code${cls}>${code.replace(/\n$/, '')}</code></pre>`;
+  });
+
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<i>$1</i>');
+  html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
+  html = html.replace(/\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  html = html.replace(/(^&gt; ?.*(?:\n&gt; ?.*)*)/gm, (block) =>
+    `<blockquote>${block
+      .split('\n')
+      .map((line) => line.replace(/^&gt; ?/, ''))
+      .join('\n')}</blockquote>`
+  );
+
+  return html;
 }
 
 async function getDraft(env, key) {
@@ -338,6 +460,23 @@ function entitiesToMarkdown(text, entities) {
   return renderEntityNode(text, buildEntityTree(text, entities));
 }
 
+// Знімає markdown-обгортки (з ENTITY_WRAPPERS вище) з рядка — потрібно там,
+// де текст показується як звичайний рядок, а не рендериться markdown-ом
+// (заголовок посту, підпис у Telegram-анонсі).
+function stripMarkdownForTitle(text) {
+  return text
+    .replace(/<\/?u>/g, '')
+    .replace(/```[a-zA-Z0-9]*\n?/g, '')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/\*\*([^*]*)\*\*/g, '$1')
+    .replace(/\*([^*]*)\*/g, '$1')
+    .replace(/~~([^~]*)~~/g, '$1')
+    .replace(/^>\s?/, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .trim();
+}
+
 // Хештеги (#тег) будь-де в тексті стають тегами на сайті — не треба
 // окремої команди чи меню, досить писати їх природно по ходу тексту.
 function extractTags(text) {
@@ -356,7 +495,11 @@ function stripTags(text) {
 
 async function createCaseFile(rawText, env, options = {}) {
   const { kind = 'thought', imageDataUrl = null, status = 'draft', tags = [] } = options;
-  const firstLine = rawText.split('\n')[0].slice(0, 70).trim();
+  // rawText тут уже пройшов entitiesToMarkdown (може містити **/*/`/<u>` і
+  // т.д.), а title показується на сайті як звичайний текст, без markdown-
+  // рендеру (<h1>{title}</h1>) — тому для заголовка форматування знімаємо,
+  // інакше жирний текст на початку публікується буквально із зірочками.
+  const firstLine = stripMarkdownForTitle(rawText.split('\n')[0]).slice(0, 70).trim();
   const title = firstLine || 'Нова нотатка';
   const now = new Date();
   const isoDate = now.toISOString().slice(0, 10);

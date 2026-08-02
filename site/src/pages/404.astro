@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="Сторінку не знайдено" description="Такої сторінки на сайті немає." noindex>
+  <div class="error-page">
+    <p class="error-code">404</p>
+    <h1>Тут нічого немає</h1>
+    <p>
+      Посилання застаріле, допис видалили, або сторінка ще не встигла
+      з'явитися — сайт оновлюється за ~30-60 секунд після публікації.
+    </p>
+    <p><a href={import.meta.env.BASE_URL}>&larr; повернутися до стрічки</a></p>
+  </div>
+</Base>

@@ -7,17 +7,14 @@ import { formatDate, displayKind } from '../lib/labels';
 import { sortEntries, excerpt } from '../lib/entries';
 
 // Стрічка — усе, що ще не "завершена стаття": чернетки, у процесі, думки,
-// кейси в роботі. Показуємо повний вміст (текст + фото) прямо тут, як
-// у каналі Telegram. Завершені статті (status: done) з цієї стрічки
-// прибираємо, щоб не дублювати — вони живуть окремим блоком праворуч.
+// кейси в роботі. Кожен пункт — лише прев'ю (перший абзац + мініатюра,
+// див. FeedItem.astro), повний текст — на сторінці самого допису. Завершені
+// статті (status: done) з цієї стрічки прибираємо, щоб не дублювати — вони
+// живуть окремим блоком праворуч.
 const allEntries = sortEntries(await getCollection('cases'));
 
 const articles = allEntries.filter((entry) => entry.data.status === 'done');
 const feedEntries = allEntries.filter((entry) => entry.data.status !== 'done');
-
-const feed = await Promise.all(
-  feedEntries.map(async (entry) => ({ entry, Content: (await entry.render()).Content }))
-);
 ---
 <Base title="стрічка" description="Стрічка нотаток і роздумів JoeWline: мікроконтролери, іграшки на залізі, автоматизація через ШІ — з окремим блоком завершених статей.">
   <div class="layout">
@@ -25,10 +22,10 @@ const feed = await Promise.all(
       <div class="feed-controls">
         <input type="search" id="search-input" placeholder="пошук по стрічці…" aria-label="пошук по стрічці" />
       </div>
-      {feed.length === 0 && <p class="muted">Поки що порожньо.</p>}
+      {feedEntries.length === 0 && <p class="muted">Поки що порожньо.</p>}
       <div id="feed-items">
-        {feed.map(({ entry, Content }) => (
-          <FeedItem entry={entry} Content={Content} />
+        {feedEntries.map((entry) => (
+          <FeedItem entry={entry} />
         ))}
       </div>
       <p id="no-results" class="muted" hidden>Нічого не знайдено.</p>

@@ -64,6 +64,22 @@ const jsonLd =
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#1c2126" />
+    <script is:inline>
+      // Виставляємо збережені класи доступності ДО першого малювання
+      // сторінки (is:inline — щоб скрипт лишився синхронним і не чекав на
+      // обробку модулів), інакше на мить блимне дефолтний вигляд.
+      (function () {
+        try {
+          var saved = JSON.parse(localStorage.getItem('a11y-settings') || '{}');
+          var root = document.documentElement;
+          if (saved.fontSize) root.classList.add('a11y-font-' + saved.fontSize);
+          if (saved.contrast) root.classList.add('a11y-contrast');
+          if (saved.dyslexia) root.classList.add('a11y-dyslexia');
+          if (saved.underlineLinks) root.classList.add('a11y-underline-links');
+          if (saved.reduceMotion) root.classList.add('a11y-reduce-motion');
+        } catch (e) {}
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}jwl-icon.svg`} />
     <link rel="apple-touch-icon" href={`${import.meta.env.BASE_URL}apple-touch-icon.png`} />
     <link rel="manifest" href={`${import.meta.env.BASE_URL}manifest.webmanifest`} />
@@ -104,6 +120,53 @@ const jsonLd =
     <footer class="site-footer">
       <a href="https://t.me/jwl_blog" target="_blank" rel="noopener noreferrer">Telegram-канал</a>
     </footer>
+
+    <div class="a11y-widget">
+      <button
+        type="button"
+        id="a11y-toggle"
+        class="a11y-toggle-btn"
+        aria-expanded="false"
+        aria-controls="a11y-panel"
+        aria-label="Налаштування доступності"
+      >
+        <span aria-hidden="true">Aa</span>
+      </button>
+      <div class="a11y-panel" id="a11y-panel" role="region" aria-label="Налаштування доступності" hidden>
+        <h2>Доступність</h2>
+
+        <div class="a11y-row">
+          <span id="a11y-fontsize-label">Розмір тексту</span>
+          <div class="a11y-btn-group" role="group" aria-labelledby="a11y-fontsize-label">
+            <button type="button" data-a11y-fontsize="" aria-label="Звичайний розмір">A</button>
+            <button type="button" data-a11y-fontsize="lg" aria-label="Більший розмір">A+</button>
+            <button type="button" data-a11y-fontsize="xl" aria-label="Найбільший розмір">A++</button>
+          </div>
+        </div>
+
+        <label class="a11y-row a11y-toggle-row">
+          <span>Високий контраст</span>
+          <input type="checkbox" data-a11y-toggle="contrast" />
+        </label>
+
+        <label class="a11y-row a11y-toggle-row">
+          <span>Шрифт для дислексії</span>
+          <input type="checkbox" data-a11y-toggle="dyslexia" />
+        </label>
+
+        <label class="a11y-row a11y-toggle-row">
+          <span>Підкреслювати посилання</span>
+          <input type="checkbox" data-a11y-toggle="underlineLinks" />
+        </label>
+
+        <label class="a11y-row a11y-toggle-row">
+          <span>Менше анімації</span>
+          <input type="checkbox" data-a11y-toggle="reduceMotion" />
+        </label>
+
+        <button type="button" class="a11y-reset" id="a11y-reset">Скинути</button>
+      </div>
+    </div>
   </body>
 </html>
 
@@ -158,7 +221,10 @@ const jsonLd =
       if (e.key === 'Escape') close();
     });
 
-    document.querySelectorAll<HTMLImageElement>('.feed-item-body img, .article-page img').forEach((img) => {
+    // Мініатюра у стрічці (.feed-item-thumb) — це посилання на допис, а
+    // не збільшуване фото, тож lightbox навмисно чіпляється лише до
+    // зображень на сторінці самого допису.
+    document.querySelectorAll<HTMLImageElement>('.article-page img').forEach((img) => {
       img.addEventListener('click', () => {
         overlayImg.src = img.src;
         overlayImg.alt = img.alt;
@@ -218,9 +284,113 @@ const jsonLd =
     });
   }
 
+  // Панель доступності: розмір тексту, контраст, шрифт для дислексії,
+  // підкреслення посилань, менше анімації. Класи на <html> вже виставлені
+  // синхронним is:inline скриптом у <head> (щоб не блимало) — тут лише
+  // синхронізуємо UI-контроли зі збереженим станом і вішаємо обробники.
+  function setupAccessibility() {
+    const STORAGE_KEY = 'a11y-settings';
+    const root = document.documentElement;
+    const toggleBtn = document.getElementById('a11y-toggle');
+    const panel = document.getElementById('a11y-panel');
+    if (!toggleBtn || !panel) return;
+
+    const load = (): Record<string, string | boolean> => {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      } catch {
+        return {};
+      }
+    };
+    const save = (settings: Record<string, string | boolean>) =>
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+
+    let settings = load();
+
+    const FONT_CLASSES = ['a11y-font-lg', 'a11y-font-xl'];
+    const TOGGLE_CLASSES: Record<string, string> = {
+      contrast: 'a11y-contrast',
+      dyslexia: 'a11y-dyslexia',
+      underlineLinks: 'a11y-underline-links',
+      reduceMotion: 'a11y-reduce-motion',
+    };
+
+    const applyFontSize = (size: string) => {
+      root.classList.remove(...FONT_CLASSES);
+      if (size) root.classList.add(`a11y-font-${size}`);
+      panel.querySelectorAll<HTMLButtonElement>('[data-a11y-fontsize]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.a11yFontsize === size));
+      });
+    };
+
+    const applyToggle = (key: string, value: unknown) => {
+      root.classList.toggle(TOGGLE_CLASSES[key], Boolean(value));
+      const input = panel.querySelector<HTMLInputElement>(`[data-a11y-toggle="${key}"]`);
+      if (input) input.checked = Boolean(value);
+    };
+
+    applyFontSize(typeof settings.fontSize === 'string' ? settings.fontSize : '');
+    Object.keys(TOGGLE_CLASSES).forEach((key) => applyToggle(key, settings[key]));
+
+    panel.querySelectorAll<HTMLButtonElement>('[data-a11y-fontsize]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const size = btn.dataset.a11yFontsize || '';
+        settings = { ...settings, fontSize: size };
+        save(settings);
+        applyFontSize(size);
+      });
+    });
+
+    panel.querySelectorAll<HTMLInputElement>('[data-a11y-toggle]').forEach((input) => {
+      input.addEventListener('change', () => {
+        const key = input.dataset.a11yToggle as string;
+        settings = { ...settings, [key]: input.checked };
+        save(settings);
+        applyToggle(key, input.checked);
+      });
+    });
+
+    document.getElementById('a11y-reset')?.addEventListener('click', () => {
+      settings = {};
+      localStorage.removeItem(STORAGE_KEY);
+      applyFontSize('');
+      Object.keys(TOGGLE_CLASSES).forEach((key) => applyToggle(key, false));
+    });
+
+    const openPanel = () => {
+      panel.hidden = false;
+      toggleBtn.setAttribute('aria-expanded', 'true');
+      panel.querySelector<HTMLElement>('button, input')?.focus();
+    };
+    const closePanel = () => {
+      panel.hidden = true;
+      toggleBtn.setAttribute('aria-expanded', 'false');
+    };
+
+    toggleBtn.addEventListener('click', () => {
+      if (panel.hidden) openPanel();
+      else closePanel();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !panel.hidden) {
+        closePanel();
+        toggleBtn.focus();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const target = e.target as Node;
+      if (!panel.hidden && !panel.contains(target) && target !== toggleBtn && !toggleBtn.contains(target)) {
+        closePanel();
+      }
+    });
+  }
+
   setupCarousels();
   setupLightbox();
   setupReactions();
+  setupAccessibility();
 </script>
 
 <script>

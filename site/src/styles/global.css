@@ -299,6 +299,27 @@ article img,
 
 .feed-item-body :first-child { margin-top: 0; }
 
+.feed-item-thumb {
+  display: block;
+  margin: 0 0 10px;
+}
+.feed-item-thumb img {
+  max-width: min(100%, 320px);
+  height: auto;
+  border-radius: 6px;
+  display: block;
+  cursor: pointer;
+}
+
+.read-more {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--copper);
+  text-decoration: none;
+  font-size: 0.88rem;
+}
+.read-more:hover { text-decoration: underline; }
+
 .permalink {
   color: var(--muted);
   text-decoration: none;
@@ -432,3 +453,176 @@ article img,
   font-size: 0.85rem;
 }
 .site-footer a:hover { color: var(--copper); }
+
+/* сторінка помилки (404) — у стилі решти сайту, не голий текст хостингу */
+.error-page {
+  max-width: 480px;
+  margin: 12vh auto 0;
+  text-align: center;
+}
+.error-code {
+  margin: 0;
+  font-size: 4.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--copper);
+}
+.error-page h1 {
+  margin: 12px 0 14px;
+  font-size: 1.3rem;
+}
+.error-page p {
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.error-page a { color: var(--copper); }
+
+/* видимий фокус для клавіатурної навігації по всьому сайту */
+:focus-visible {
+  outline: 2px solid var(--copper);
+  outline-offset: 2px;
+}
+
+/* --- Доступність: налаштування, що вмикаються через панель у Base.astro --- */
+
+/* розмір шрифту — html.font-size каскадом міняє всі rem-розміри сайту */
+html.a11y-font-lg { font-size: 112.5%; }
+html.a11y-font-xl { font-size: 125%; }
+
+/* високий контраст — темний/паперовий дуже світлий, мідь яскравіша,
+   посилання й пігулки з товщими межами, щоб не покладатись лише на колір */
+html.a11y-contrast {
+  --ink: #000000;
+  --panel: #101010;
+  --paper: #ffffff;
+  --copper: #ffb454;
+  --muted: #d8d8d8;
+}
+html.a11y-contrast a { text-decoration: underline; }
+html.a11y-contrast .pill,
+html.a11y-contrast .tag { border-width: 2px; }
+html.a11y-contrast .case-list li,
+html.a11y-contrast .feed-item,
+html.a11y-contrast .tag-index li { border-top-color: var(--muted); }
+
+/* шрифт, зручніший для людей з дислексією: без моноширинної в'язі,
+   ширші міжбуквені й міжрядкові інтервали (рекомендація BDA) */
+html.a11y-dyslexia body {
+  font-family: Verdana, Tahoma, 'Segoe UI', Arial, sans-serif;
+  line-height: 1.85;
+  letter-spacing: 0.02em;
+  word-spacing: 0.06em;
+}
+
+/* підкреслення всіх посилань — не покладатись лише на колір тексту */
+html.a11y-underline-links a { text-decoration: underline; }
+
+/* менше анімації — вимикає плавний скрол і CSS-переходи/анімації */
+html.a11y-reduce-motion *,
+html.a11y-reduce-motion *::before,
+html.a11y-reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carousel-track { scroll-behavior: auto; }
+  .lightbox { transition: none; }
+}
+
+/* --- Плаваюча кнопка + панель доступності --- */
+
+.a11y-widget {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+}
+
+.a11y-toggle-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  border: 1px solid var(--copper);
+  background: var(--panel);
+  color: var(--paper);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  touch-action: manipulation;
+}
+.a11y-toggle-btn:hover,
+.a11y-toggle-btn[aria-expanded='true'] {
+  border-color: var(--paper);
+  color: var(--copper);
+}
+
+.a11y-panel {
+  position: absolute;
+  right: 0;
+  bottom: 60px;
+  width: 270px;
+  max-width: calc(100vw - 32px);
+  background: var(--panel);
+  border: 1px solid #333c42;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.a11y-panel[hidden] { display: none; }
+
+.a11y-panel h2 {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  color: var(--copper);
+}
+
+.a11y-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+}
+
+.a11y-toggle-row { cursor: pointer; }
+.a11y-toggle-row input { width: 18px; height: 18px; cursor: pointer; }
+
+.a11y-btn-group {
+  display: flex;
+  gap: 4px;
+}
+.a11y-btn-group button {
+  min-width: 32px;
+  height: 32px;
+  border: 1px solid #333c42;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 6px;
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.a11y-btn-group button[aria-pressed='true'] {
+  border-color: var(--copper);
+  color: var(--copper);
+}
+
+.a11y-reset {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  background: none;
+  border: 1px solid #333c42;
+  border-radius: 6px;
+  color: var(--muted);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.a11y-reset:hover { color: var(--paper); border-color: var(--paper); }

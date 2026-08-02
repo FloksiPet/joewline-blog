@@ -2,26 +2,40 @@
 import Tags from './Tags.astro';
 import ReactionBar from './ReactionBar.astro';
 import { displayKind, formatDate } from '../lib/labels';
+import { excerpt } from '../lib/entries';
+import { firstImagePath } from '../lib/og';
 import type { CollectionEntry } from 'astro:content';
 
 interface Props {
   entry: CollectionEntry<'cases'>;
-  Content: any;
 }
 
-const { entry, Content } = Astro.props;
+const { entry } = Astro.props;
 const kind = displayKind(entry);
+const href = `${import.meta.env.BASE_URL}${entry.slug}`;
+
+// У стрічці показуємо лише прев'ю (перший абзац + мініатюра), а не весь
+// текст допису — повний вміст лишається на сторінці самого допису.
+const preview = excerpt(entry.body, 280);
+const imagePath = firstImagePath(entry.body);
+const imageSrc = imagePath ? `${import.meta.env.BASE_URL}${imagePath.replace(/^\//, '')}` : null;
 ---
 <article class="feed-item" id={entry.slug}>
   <div class="feed-item-meta">
     <span class={`pill ${kind.className}`}>{kind.label}</span>
-    <a class="permalink" href={`${import.meta.env.BASE_URL}${entry.slug}`}>
+    <a class="permalink" href={href}>
       <time datetime={entry.data.date.toISOString()}>{formatDate(entry.data.date)}</time>
     </a>
   </div>
-  <h2><a href={`${import.meta.env.BASE_URL}${entry.slug}`}>{entry.data.title}</a></h2>
+  <h2><a href={href}>{entry.data.title}</a></h2>
   <div class="feed-item-body">
-    <Content />
+    {imageSrc && (
+      <a class="feed-item-thumb" href={href} tabindex="-1" aria-hidden="true">
+        <img src={imageSrc} alt="" loading="lazy" />
+      </a>
+    )}
+    <p class="excerpt">{preview}</p>
+    <a class="read-more" href={href}>Читати повністю →</a>
   </div>
   <Tags tags={entry.data.tags} />
   <ReactionBar slug={entry.slug} />
