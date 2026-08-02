@@ -37,6 +37,8 @@ function helpText(env) {
     '• «Зберегти» — зберігає написане як чернетку/нотатку.',
     '• «Опублікувати як статтю» — позначає кейс завершеним. На сайті це «стаття», і вона переїжджає в окремий блок збоку.',
     '',
+    'Файли: скинь документ як звичайний файл (не фото) — .md/.txt додасться прямо в текст допису новим абзацем, а будь-що інше (pdf, zip, docx і т.д., до ~19 МБ) стане на сайті карткою з кнопкою «скачати», розміром і розширенням.',
+    '',
     'Теги: просто пиши #тег будь-де в тексті (наприклад #проєкт-x або #мікроконтролери) — на сайті він стане клікабельним кольоровим тегом. Можна декілька.',
     '',
     'Команди: /start — меню, /help — ця підказка, /done — зберегти чернетку, /publish — опублікувати як статтю.',
@@ -155,6 +157,8 @@ export default {
       } else if (message.photo) {
         imageDataUrl = await uploadPhotoToGitHub(message.photo, env);
         rawText = entitiesToMarkdown(message.caption || message.text || '', message.caption_entities || message.entities);
+      } else if (message.document) {
+        rawText = await handleDocument(message.document, env, message.caption, message.caption_entities);
       } else if (text) {
         rawText = entitiesToMarkdown(message.text || '', message.entities);
       }
@@ -166,7 +170,7 @@ export default {
 
       const hasContent = Boolean(rawText?.trim() || imageDataUrl);
       if (!hasContent) {
-        await sendTelegram(env, chatId, 'Не побачив ні тексту, ні голосу, ні фото з підписом — спробуй ще раз.', getMainKeyboard(env));
+        await sendTelegram(env, chatId, 'Не побачив ні тексту, ні голосу, ні фото, ні файлу — спробуй ще раз.', getMainKeyboard(env));
         return new Response('ok');
       }
 
@@ -276,7 +280,8 @@ async function announceNewPost(env, { title, slug, tags, status, bodyMarkdown })
   const header = `${emoji} <b>${escapeHtml(title)}</b>\n\n`;
   const footer = `\n\n${postUrl}${tagsLine}`;
   const budget = Math.max(200, TELEGRAM_TEXT_LIMIT - header.length - footer.length - 300);
-  const { text: safeBody, truncated } = truncateForTelegram(stripImagesMarkdown(bodyMarkdown), budget);
+  const bodyForAnnounce = resolveFileLinksInText(stripImagesMarkdown(bodyMarkdown), env);
+  const { text: safeBody, truncated } = truncateForTelegram(bodyForAnnounce, budget);
   const html = `${header}${markdownToTelegramHtml(safeBody)}${truncated ? '…' : ''}${footer}`;
 
   try {
@@ -312,14 +317,25 @@ function extractImagePaths(text) {
   return [...text.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((m) => m[1]);
 }
 
-// Фото від бота лежать у репозиторії відносними шляхами (`/uploads/...`) —
-// сайт роздає їх лише після деплою GitHub Pages (~30-60с), а анонс іде
-// одразу. GitHub Raw роздає щойно закомічений файл миттєво, тож для
-// Telegram-анонсу беремо звідти, а не з SITE_URL.
+// Фото й файли від бота лежать у репозиторії відносними шляхами
+// (`/uploads/...`) — сайт роздає їх лише після деплою GitHub Pages
+// (~30-60с), а анонс іде одразу. GitHub Raw роздає щойно закомічений файл
+// миттєво, тож для Telegram-анонсу беремо звідти, а не з SITE_URL. Назва
+// лишилась "Image" з тих часів, коли бот умів лише фото — логіка шляху
+// генерична (site/public/<src>), тому reuse і для resolveFileLinksInText.
 function resolveImageUrl(env, src) {
   if (/^https?:\/\//i.test(src)) return src;
   const cleanPath = src.startsWith('/') ? src : `/${src}`;
   return `https://raw.githubusercontent.com/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/${env.GITHUB_BRANCH}/site/public${cleanPath}`;
+}
+
+// Той самий трюк, що й для фото в resolveImageUrl — посилання на файли з
+// handleDocument теж корене-відносні (`/uploads/...`), а Telegram-анонсу
+// потрібен абсолютний URL, інакше `<a href>` в HTML просто не працює.
+function resolveFileLinksInText(text, env) {
+  return text.replace(/\[([^\]]*)\]\((\/uploads\/[^)\s]+)((?:\s+"[^"]*")?)\)/g, (_, label, src, title) => {
+    return `[${label}](${resolveImageUrl(env, src)}${title})`;
+  });
 }
 
 async function sendAnnounceMedia(env, chatId, images) {
@@ -367,7 +383,10 @@ function markdownToTelegramHtml(markdown) {
   html = html.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   html = html.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<i>$1</i>');
   html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
-  html = html.replace(/\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  // Посилання на файли (handleDocument) мають ще й markdown title з
+  // розміром — `(url "2.4 МБ")` — його тут відкидаємо, Telegram-анонсу
+  // потрібен лише сам робочий лінк.
+  html = html.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, '<a href="$2">$1</a>');
   html = html.replace(/(^&gt; ?.*(?:\n&gt; ?.*)*)/gm, (block) =>
     `<blockquote>${block
       .split('\n')
@@ -625,6 +644,73 @@ async function uploadPhotoToGitHub(photo, env) {
   });
 
   return `/uploads/telegram/${fileName}`;
+}
+
+// Розширення, чий вміст читається як текст і йде прямо в тіло допису
+// (новий абзац), а не як бінарне вкладення для скачування — типовий кейс:
+// скинути ботові готовий .md-чернетку чи план замість передруковувати його
+// вручну повідомленнями.
+const TEXT_INLINE_EXTENSIONS = new Set(['md', 'markdown', 'txt']);
+
+// Telegram Bot API сам не віддає через getFile файли, більші за ~20 МБ —
+// це обмеження самого Telegram, не наше; поріг трохи нижчий, щоб встигнути
+// показати зрозумілу помилку до того, як зависне скачування.
+const MAX_DOCUMENT_BYTES = 19 * 1024 * 1024;
+
+async function handleDocument(document, env, caption, captionEntities) {
+  if (document.file_size && document.file_size > MAX_DOCUMENT_BYTES) {
+    throw new Error(`Файл завеликий (${formatFileSize(document.file_size)}) — бот скачує через Telegram лише файли до ~19 МБ.`);
+  }
+
+  const fileInfo = await telegramApi(env, 'getFile', { file_id: document.file_id });
+  const filePath = fileInfo.result.file_path;
+  const fileUrl = `https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`;
+  const resp = await fetch(fileUrl);
+  const buffer = await resp.arrayBuffer();
+
+  const originalName = document.file_name || filePath.split('/').pop() || 'файл';
+  const ext = (originalName.split('.').pop() || '').toLowerCase();
+  const captionText = entitiesToMarkdown(caption || '', captionEntities);
+
+  if (TEXT_INLINE_EXTENSIONS.has(ext)) {
+    // .md/.txt — не вкладення, а текст: вставляється як частина статті
+    // (новий абзац), так само, якби це написали прямо в чат.
+    const text = new TextDecoder('utf-8').decode(buffer).trim();
+    return captionText ? `${captionText}\n\n${text}` : text;
+  }
+
+  const size = buffer.byteLength;
+  const safeExt = ext.replace(/[^a-z0-9]/g, '') || 'bin';
+  const fileName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${safeExt}`;
+  const repoPath = `site/public/uploads/telegram/${fileName}`;
+
+  await githubApi(env, 'PUT', `/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/contents/${repoPath}`, {
+    message: `upload: ${fileName}`,
+    content: base64EncodeBuffer(buffer),
+    branch: env.GITHUB_BRANCH,
+  });
+
+  // Оригінальна назва файла йде в текст посилання (і в атрибут download на
+  // сайті) — реальний шлях у репозиторії ховається за нею так само, як за
+  // фото ховається шлях `/uploads/...`. Розмір кладемо в markdown title
+  // (`"2.4 МБ"`) — rehype-file-card.mjs на сайті бере його звідти без
+  // додаткового синтаксису, а markdownToTelegramHtml для анонсу в групу
+  // просто відкидає title і лишає звичайне посилання.
+  const displayName = originalName.replace(/[[\]]/g, '').trim() || fileName;
+  const fileMarkdown = `[${displayName}](/uploads/telegram/${fileName} "${formatFileSize(size)}")`;
+  return captionText ? `${captionText}\n\n${fileMarkdown}` : fileMarkdown;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} Б`;
+  const units = ['КБ', 'МБ', 'ГБ'];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unitIndex]}`;
 }
 
 function mimeTypeToExtension(mimeType) {

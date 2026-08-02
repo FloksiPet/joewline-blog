@@ -1,0 +1,133 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import { collectAttachments, CATEGORY_LABELS, CATEGORY_ORDER } from '../../lib/attachments';
+import { formatDate } from '../../lib/labels';
+import { tagColor } from '../../lib/tags';
+
+const entries = await getCollection('cases');
+const attachments = collectAttachments(entries);
+
+const groups = CATEGORY_ORDER.map((category) => ({
+  category,
+  label: CATEGORY_LABELS[category],
+  items: attachments.filter((item) => item.category === category),
+})).filter((group) => group.items.length > 0);
+
+const allTags = Array.from(new Set(attachments.flatMap((item) => item.tags))).sort((a, b) => a.localeCompare(b, 'uk'));
+
+const withBase = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`;
+---
+<Base title="усі вкладення" description="Усі файли й фото, додані до дописів на joewline — розділені за типом, з фільтром за тегом і сортуванням за датою.">
+  <p class="back-link"><a href={import.meta.env.BASE_URL}>&larr; уся стрічка</a></p>
+  <h1>Вкладення</h1>
+
+  {attachments.length === 0 ? (
+    <p class="muted">Вкладень поки що немає.</p>
+  ) : (
+    <>
+      <div class="feed-controls attachments-controls">
+        <select id="attachment-tag-filter" aria-label="Фільтр за тегом">
+          <option value="">усі теги</option>
+          {allTags.map((tag) => (
+            <option value={tag}>#{tag}</option>
+          ))}
+        </select>
+        <select id="attachment-sort" aria-label="Сортування">
+          <option value="date-desc">спершу нові</option>
+          <option value="date-asc">спершу старі</option>
+          <option value="tag">за тегом (А-Я)</option>
+        </select>
+      </div>
+
+      {groups.map((group) => (
+        <section class="attachment-section">
+          <h2>{group.label}</h2>
+          <div class="attachment-grid">
+            {group.items.map((item) => (
+              <article
+                class="attachment-card"
+                data-date={item.postDate.toISOString()}
+                data-tags={`,${item.tags.join(',')},`}
+                data-tag-sort={[...item.tags].sort((a, b) => a.localeCompare(b, 'uk'))[0] ?? ''}
+              >
+                <a class="attachment-download" href={withBase(item.href)} download={item.label}>
+                  {item.category === 'image' ? (
+                    <img class="attachment-thumb" src={withBase(item.href)} alt="" loading="lazy" decoding="async" />
+                  ) : (
+                    <span class="attachment-icon">{item.ext || '?'}</span>
+                  )}
+                  <span class="attachment-name">{item.label}</span>
+                  {item.size && <span class="attachment-size">{item.size}</span>}
+                </a>
+                <div class="attachment-meta">
+                  <time datetime={item.postDate.toISOString()}>{formatDate(item.postDate)}</time>
+                  <a class="attachment-source" href={withBase(`${item.postSlug}/`)}>{item.postTitle}</a>
+                </div>
+                {item.tags.length > 0 && (
+                  <div class="attachment-tags">
+                    {item.tags.map((tag) => (
+                      <a class="tag" style={`--tag-color: ${tagColor(tag)}`} href={withBase(`tags/${tag}/`)}>#{tag}</a>
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      ))}
+      <p id="no-attachment-results" class="muted" hidden>Нічого не знайдено для цього тега.</p>
+    </>
+  )}
+</Base>
+
+<script>
+  const tagFilter = document.getElementById('attachment-tag-filter') as HTMLSelectElement | null;
+  const sortSelect = document.getElementById('attachment-sort') as HTMLSelectElement | null;
+  const noResults = document.getElementById('no-attachment-results');
+
+  function applyFilter() {
+    const tag = tagFilter?.value ?? '';
+    let visibleTotal = 0;
+
+    document.querySelectorAll<HTMLElement>('.attachment-card').forEach((card) => {
+      const tags = card.dataset.tags ?? ',,';
+      const matches = !tag || tags.includes(`,${tag},`);
+      card.hidden = !matches;
+      if (matches) visibleTotal += 1;
+    });
+
+    document.querySelectorAll<HTMLElement>('.attachment-section').forEach((section) => {
+      const anyVisible = Array.from(section.querySelectorAll<HTMLElement>('.attachment-card')).some((card) => !card.hidden);
+      section.hidden = !anyVisible;
+    });
+
+    if (noResults) noResults.hidden = visibleTotal > 0;
+  }
+
+  function applySort() {
+    const mode = sortSelect?.value ?? 'date-desc';
+
+    document.querySelectorAll<HTMLElement>('.attachment-grid').forEach((grid) => {
+      const cards = Array.from(grid.querySelectorAll<HTMLElement>('.attachment-card'));
+      cards.sort((a, b) => {
+        if (mode === 'tag') {
+          const tagA = a.dataset.tagSort ?? '';
+          const tagB = b.dataset.tagSort ?? '';
+          // Картки без тегів — в кінець, а не на початок алфавітного порядку.
+          if (!tagA && !tagB) return 0;
+          if (!tagA) return 1;
+          if (!tagB) return -1;
+          return tagA.localeCompare(tagB, 'uk');
+        }
+        const dateA = new Date(a.dataset.date ?? 0).valueOf();
+        const dateB = new Date(b.dataset.date ?? 0).valueOf();
+        return mode === 'date-asc' ? dateA - dateB : dateB - dateA;
+      });
+      cards.forEach((card) => grid.appendChild(card));
+    });
+  }
+
+  tagFilter?.addEventListener('change', applyFilter);
+  sortSelect?.addEventListener('change', applySort);
+</script>

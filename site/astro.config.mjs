@@ -3,6 +3,7 @@ import sitemap from '@astrojs/sitemap';
 import AstroPWA from '@vite-pwa/astro';
 import { rehypeBaseUrl } from './src/lib/rehype-base-url.mjs';
 import { rehypeGallery } from './src/lib/rehype-gallery.mjs';
+import { rehypeFileCard } from './src/lib/rehype-file-card.mjs';
 
 // ВАЖЛИВО: підлаштуй ці два поля під свій репозиторій, інакше посилання
 // на сайті та фіди будуть вести не туди.
@@ -72,9 +73,11 @@ export default defineConfig({
     }),
   ],
   markdown: {
-    // Фото з Telegram-бота вставляються як `/uploads/...` (корене-відносний
-    // шлях). rehypeBaseUrl дописує `base`, інакше на GitHub Pages вони
-    // ведуть повз підпапку сайту і просто не завантажуються.
-    rehypePlugins: [rehypeGallery, [rehypeBaseUrl, base]],
+    // Фото й файли з Telegram-бота вставляються як `/uploads/...`
+    // (корене-відносний шлях). Порядок важливий: спершу rehypeGallery
+    // (фото → карусель) і rehypeFileCard (посилання на файл → картка
+    // скачування), і лише тоді rehypeBaseUrl дописує `base` — інакше на
+    // GitHub Pages вони ведуть повз підпапку сайту і просто не працюють.
+    rehypePlugins: [rehypeGallery, rehypeFileCard, [rehypeBaseUrl, base]],
   },
 });

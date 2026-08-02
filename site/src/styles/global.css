@@ -210,6 +210,172 @@ article img,
 }
 .carousel-dot.is-active::after { background: var(--copper); }
 
+/* картка файла — нетекстове вкладення (rehype-file-card.mjs), клік качає
+   файл під його людською назвою (атрибут download), а не хешованою */
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(100%, 380px);
+  margin: 1em 0;
+  padding: 10px 14px;
+  border: 1px solid #333c42;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--paper);
+  transition: border-color 0.15s;
+}
+.file-card:hover { border-color: var(--copper); }
+
+.file-card-ext {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--copper);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.file-card-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.file-card-size {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.file-card-download {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+.file-card:hover .file-card-download { color: var(--copper); }
+
+/* сторінка /files/ — усі вкладення з усіх дописів, розділені за типом */
+.attachments-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.attachments-controls select {
+  background: var(--panel);
+  border: 1px solid #333c42;
+  border-radius: 8px;
+  color: var(--paper);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 8px 12px;
+}
+.attachments-controls select:focus { outline: none; border-color: var(--copper); }
+
+.attachment-section {
+  margin-top: 2.2em;
+}
+.attachment-section h2 {
+  color: var(--copper);
+  font-size: 1.05rem;
+  margin-bottom: 12px;
+}
+
+.attachment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.attachment-card {
+  border: 1px solid #333c42;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.attachment-download {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-decoration: none;
+  color: var(--paper);
+}
+
+.attachment-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--panel);
+  margin: 0;
+  cursor: default;
+}
+
+.attachment-icon {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--copper);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.attachment-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-card:hover .attachment-name { color: var(--copper); }
+
+.attachment-size {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.attachment-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.attachment-source {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-source:hover { color: var(--copper); }
+
+.attachment-tags { margin-top: -2px; }
+.attachment-tags .tag { font-size: 0.7rem; }
+
 /* lightbox — клік по фото відкриває збільшену версію */
 .lightbox {
   position: fixed;
