@@ -8,6 +8,10 @@ interface Props {
   type?: 'website' | 'article';
   publishedTime?: string;
   noindex?: boolean;
+  // Футер завжди на екрані (position: fixed) — лише на головній стрічці.
+  // На решті сторінок (стаття, теги) він звичайний, "плаваючий" — іде за
+  // контентом і зникає з екрана при скролі довгої статті.
+  fixedFooter?: boolean;
 }
 
 const DEFAULT_DESCRIPTION =
@@ -20,6 +24,7 @@ const {
   type = 'website',
   publishedTime,
   noindex = false,
+  fixedFooter = false,
 } = Astro.props;
 
 const pageTitle = `${title} — joewline`;
@@ -104,7 +109,7 @@ const jsonLd =
 
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
   </head>
-  <body>
+  <body class={fixedFooter ? 'has-fixed-footer' : ''}>
     <header class="site-header">
       <a href={import.meta.env.BASE_URL} class="brand">
         <img src={`${import.meta.env.BASE_URL}jwl-logo-horizontal.svg`} alt="joewline" height="52" />
@@ -117,9 +122,13 @@ const jsonLd =
     <main>
       <slot />
     </main>
-    <footer class="site-footer">
+    <footer class={`site-footer ${fixedFooter ? 'is-fixed' : ''}`}>
       <a href="https://t.me/jwl_blog" target="_blank" rel="noopener noreferrer">Telegram-канал</a>
     </footer>
+
+    <button type="button" id="scroll-top" class="scroll-top-btn" aria-label="Нагору сторінки" hidden>
+      <span aria-hidden="true">↑</span>
+    </button>
 
     <div class="a11y-widget">
       <button
@@ -387,10 +396,28 @@ const jsonLd =
     });
   }
 
+  function setupScrollTop() {
+    const btn = document.getElementById('scroll-top') as HTMLButtonElement | null;
+    if (!btn) return;
+
+    const SHOW_AFTER_PX = 400;
+    const toggleVisibility = () => {
+      btn.hidden = window.scrollY < SHOW_AFTER_PX;
+    };
+    document.addEventListener('scroll', toggleVisibility, { passive: true });
+    toggleVisibility();
+
+    btn.addEventListener('click', () => {
+      const reduceMotion = document.documentElement.classList.contains('a11y-reduce-motion');
+      window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    });
+  }
+
   setupCarousels();
   setupLightbox();
   setupReactions();
   setupAccessibility();
+  setupScrollTop();
 </script>
 
 <script>

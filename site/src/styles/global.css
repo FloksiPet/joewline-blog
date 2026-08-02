@@ -454,6 +454,25 @@ article img,
 }
 .site-footer a:hover { color: var(--copper); }
 
+/* футер, притиснутий до низу екрана (лише на головній стрічці — див.
+   fixedFooter у Base.astro) — на решті сторінок футер лишається звичайним,
+   "плаваючим" разом з контентом. main і плаваючі кнопки (a11y/scroll-top)
+   отримують запас знизу, щоб футер їх не перекривав. */
+.site-footer.is-fixed {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  margin: 0;
+  max-width: none;
+  padding: 12px 20px;
+  background: var(--ink);
+}
+.has-fixed-footer main { padding-bottom: 76px; }
+.has-fixed-footer .a11y-widget,
+.has-fixed-footer .scroll-top-btn { bottom: 76px; }
+
 /* сторінка помилки (404) — у стилі решти сайту, не голий текст хостингу */
 .error-page {
   max-width: 480px;
@@ -540,6 +559,31 @@ html.a11y-reduce-motion *::after {
   bottom: 16px;
   z-index: 60;
 }
+
+/* кнопка "нагору" — навмисно ліворуч, щоб не стикатись з панеллю
+   доступності праворуч; з'являється лише після прокрутки (JS) */
+.scroll-top-btn {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 40;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid #333c42;
+  background: var(--panel);
+  color: var(--paper);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  touch-action: manipulation;
+}
+.scroll-top-btn[hidden] { display: none; }
+.scroll-top-btn:hover { border-color: var(--copper); color: var(--copper); }
 
 .a11y-toggle-btn {
   width: 48px;

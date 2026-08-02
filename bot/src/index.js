@@ -400,11 +400,23 @@ async function getDraftMode(env, chatId) {
 // (дерево) — часткового перетину не буває, це дозволяє безпечно побудувати
 // дерево й рекурсивно згорнути його в markdown, не боячись поламати
 // вкладеність дужок/зірочок.
+// CommonMark вимагає, щоб відкриваючий/закриваючий маркер емфази (**/*/~~)
+// не межував із пробілом — інакше він не сприймається як маркер, а
+// лишається буквальними зірочками в тексті. Telegram, обираючи текст
+// для жирного/курсиву через контекстне меню, часто захоплює пробіл на
+// краю виділення — тому пробіли з країв виносимо ЗА межі маркерів,
+// а не всередину них.
+function wrapEmphasis(inner, marker) {
+  const [, lead, core, trail] = inner.match(/^(\s*)([\s\S]*?)(\s*)$/);
+  if (!core) return inner;
+  return `${lead}${marker}${core}${marker}${trail}`;
+}
+
 const ENTITY_WRAPPERS = {
-  bold: (inner) => `**${inner}**`,
-  italic: (inner) => `*${inner}*`,
+  bold: (inner) => wrapEmphasis(inner, '**'),
+  italic: (inner) => wrapEmphasis(inner, '*'),
   underline: (inner) => `<u>${inner}</u>`,
-  strikethrough: (inner) => `~~${inner}~~`,
+  strikethrough: (inner) => wrapEmphasis(inner, '~~'),
   code: (inner) => `\`${inner}\``,
   pre: (inner, node) => `\n\`\`\`${node.language || ''}\n${inner}\n\`\`\`\n`,
   text_link: (inner, node) => `[${inner}](${node.url})`,
